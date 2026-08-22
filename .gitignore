@@ -31,3 +31,7 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Project documentation (local only)
+CODE_EXPLANATIONS.md
+PROJECT_PROGRESS.md
