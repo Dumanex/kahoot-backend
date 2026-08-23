@@ -9,4 +9,6 @@ import java.util.Optional;
 @Repository
 public interface GameSessionRepository extends JpaRepository<GameSession, Long> {
     Optional<GameSession> findByPinCode(String pinCode);
+
+    boolean existsByPinCode(String pinCode);
 }

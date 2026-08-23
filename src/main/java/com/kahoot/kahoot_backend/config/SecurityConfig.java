@@ -1,10 +1,14 @@
 package com.kahoot.kahoot_backend.config;
 
+import com.kahoot.kahoot_backend.exception.ErrorResponse;
 import com.kahoot.kahoot_backend.repository.UserRepository;
 import com.kahoot.kahoot_backend.service.JwtService;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -20,6 +24,9 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import tools.jackson.databind.ObjectMapper;
+
+import java.time.LocalDateTime;
 
 @Configuration
 @EnableWebSecurity
@@ -63,9 +70,22 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http.csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(ex -> ex.authenticationEntryPoint((request, response, authException) -> {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    ErrorResponse errorResponse = ErrorResponse.builder()
+                            .timestamp(LocalDateTime.now())
+                            .status(401)
+                            .error("Unauthorized")
+                            .message("Authentication required")
+                            .path(request.getRequestURI())
+                            .build();
+                    new ObjectMapper().writeValue(response.getWriter(), errorResponse);
+                }))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/api/games/{pin}").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/games/{pinCode}").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/games/{pinCode}/join").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .anyRequest().authenticated()
                 )

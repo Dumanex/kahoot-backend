@@ -9,4 +9,6 @@ import java.util.List;
 @Repository
 public interface PlayerRepository extends JpaRepository<Player, Long> {
     List<Player> findByGameSessionId(Long gameSessionId);
+
+    boolean existsByGameSessionIdAndNickname(Long sessionId, String nickname);
 }
