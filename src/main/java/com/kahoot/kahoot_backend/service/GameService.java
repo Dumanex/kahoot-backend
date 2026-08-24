@@ -69,6 +69,7 @@ public class GameService {
 
         session.setStatus(GameSessionStatus.IN_PROGRESS);
         session.setStartedAt(LocalDateTime.now());
+        session.setCurrentQuestionIndex(0);
         session = gameSessionRepository.save(session);
 
         int totalQuestions = questionRepository.countByQuizId(session.getQuiz().getId());
@@ -85,7 +86,7 @@ public class GameService {
         int totalQuestion = questionRepository.countByQuizId(session.getQuiz().getId());
         int nextIndex = session.getCurrentQuestionIndex() + 1;
 
-        if (nextIndex > totalQuestion) {
+        if (nextIndex >= totalQuestion) {
             throw new IllegalStateException("No more questions available");
         }
 

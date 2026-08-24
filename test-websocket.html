@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="">
+<head>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.6.1/dist/sockjs.min.js"></script>
+    <title>WebSocket Test</title>
+</head>
+<body>
+<div>
+    PIN: <input id="pin" value="123456" />
+    Nickname: <input id="nickname" value="Player1" />
+    <button onclick="connect()">Connect</button>
+    <button onclick="join()">Join</button>
+    <button onclick="start()">Start (Host)</button>
+    <button onclick="next()">Next (Host)</button>
+    <button onclick="answer()">Answer</button>
+</div>
+<pre id="log" style="background:#f0f0f0;padding:10px;height:300px;overflow:auto;"></pre>
+
+<script>
+    let stompClient = null;
+    function log(msg) { document.getElementById('log').textContent += msg + '\n'; }
+
+    function connect() {
+        const socket = new SockJS('http://localhost:8080/ws');
+        stompClient = Stomp.over(socket);
+        stompClient.debug = function(str) {}; // Isključi debug log
+
+        stompClient.connect({}, (frame) => {
+            log('Connected!');
+            const pin = document.getElementById('pin').value;
+
+            ['/players', '/started', '/question', '/answer-result', '/leaderboard', '/ended', '/error']
+                .forEach(topic => {
+                    stompClient.subscribe('/topic/game/' + pin + topic, (msg) => {
+                        log('[' + topic + '] ' + msg.body);
+                    });
+                });
+            log('Subscribed to topics for PIN: ' + pin);
+        }, (error) => {
+            log('Error: ' + error);
+        });
+    }
+
+    function send(dest, body) {
+        if (!stompClient || !stompClient.connected) {
+            log('Not connected!');
+            return;
+        }
+        stompClient.send('/app/game/' + document.getElementById('pin').value + dest, {}, JSON.stringify(body));
+        log('Sent: ' + dest);
+    }
+
+    function join() { send('/join', {nickname: document.getElementById('nickname').value}); }
+    function start() { send('/start', {}); }
+    function next() { send('/next', {}); }
+    function answer() {
+        send('/answer', {
+            questionId: 11,
+            answerId: 55,
+            responseTimeMs: 2000
+        });
+    }
+</script>
+</body>
+</html>

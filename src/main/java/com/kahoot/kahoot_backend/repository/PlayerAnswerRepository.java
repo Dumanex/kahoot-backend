@@ -9,4 +9,5 @@ import java.util.Optional;
 @Repository
 public interface PlayerAnswerRepository extends JpaRepository<PlayerAnswer, Long> {
     Optional<PlayerAnswer> findByPlayerIdAndQuestionId(Long playerId, Long questionId);
+    boolean existsByPlayerIdAndQuestionId(Long playerId, Long questionId);
 }
