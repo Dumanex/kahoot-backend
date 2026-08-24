@@ -24,8 +24,8 @@ public class GameMessageService {
     private final GameSessionRepository gameSessionRepository;
     private final PlayerRepository playerRepository;
     private final QuestionRepository questionRepository;
-    private final PlayerAnswerRepository playerAnswerRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final PlayerService playerService;
 
     private static final String TOPIC_PREFIX = "/topic/game/";
 
@@ -62,79 +62,17 @@ public class GameMessageService {
 
     @Transactional
     public void handlePlayerAnswer(String pinCode, AnswerSubmitRequest request) {
-        GameSession session = getSessionOrThrow(pinCode);
+        try {
+            AnswerResultDTO result = playerService.submitAnswer(pinCode, request.getPlayerId(), request);
 
-        if (session.getStatus() != GameSessionStatus.IN_PROGRESS) {
-            sendError(pinCode, "Game is not started yet");
-            return;
+            // Broadcast answer result to player
+            messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/answer-result", result);
+
+            // Broadcast leaderboard
+            broadcastLeaderboard(pinCode, getSessionOrThrow(pinCode));
+        } catch (IllegalArgumentException | IllegalStateException | ResourceNotFoundException e) {
+            sendError(pinCode, e.getMessage());
         }
-
-        Question currentQuestion = getCurrentQuestion(session);
-        if (currentQuestion == null || !currentQuestion.getId().equals(request.getQuestionId())) {
-            sendError(pinCode, "Invalid question");
-            return;
-        }
-
-        // Nadji playera (za sada pretpostavljamo jedan player po konekciji -/frontend šalje nickname u header?)
-        // U realnom scenariju bi trebalo da imaš playerId u poruci ili session mapping
-        // Za sada: uzmi prvog playera iz sesije (demo)
-        List<Player> players = playerRepository.findByGameSessionId(session.getId());
-        if (players.isEmpty()) {
-            sendError(pinCode, "Players not found");
-            return;
-        }
-
-        // TODO: U pravoj implementaciji, playerId bi dolazio iz STOMP session attributes ili JWT
-        // Za demo uzimamo prvog - FRONTEND MORA DA ŠALJE playerId ILI nickname
-        Player player = players.getFirst();
-        if (playerAnswerRepository.existsByPlayerIdAndQuestionId(player.getId(), request.getQuestionId())) {
-            sendError(pinCode, "Already answered this question");
-            return;
-        }
-
-        Answer correctAnswer = currentQuestion.getAnswers()
-                .stream()
-                .filter(Answer::getIsCorrect)
-                .findFirst()
-                .orElse(null);
-
-        boolean isCorrect = correctAnswer != null && correctAnswer.getId().equals(request.getAnswerId());
-
-        // Racunanje poena (brzi odgovor - vise poena, max 1000)
-        int basePoints = isCorrect ? 1000 : 0;
-        int timeBonus = isCorrect ? Math.max(0, 1000 - request.getResponseTimeMs()) : 0;
-        int pointsEarned = basePoints + timeBonus;
-
-        // Streak update
-        int newStreak = isCorrect ? player.getStreak() + 1 : 0;
-        player.setStreak(newStreak);
-        player.setScore(player.getScore() + pointsEarned);
-        playerRepository.save(player);
-
-        Answer selectedAnswer = currentQuestion.getAnswers()
-                .stream()
-                .filter(answer -> answer.getId().equals(request.getAnswerId()))
-                .findFirst()
-                .orElse(null);
-
-        // Save PlayerAnswer
-        PlayerAnswer playerAnswer = PlayerAnswer.builder()
-                .player(player)
-                .question(currentQuestion)
-                .answer(selectedAnswer)
-                .responseTimeMs(request.getResponseTimeMs())
-                .isCorrect(isCorrect)
-                .pointsEarned(pointsEarned)
-                .answeredAt(LocalDateTime.now())
-                .build();
-
-        playerAnswerRepository.save(playerAnswer);
-
-        // Broadcast answer result to player (private ili na topic)
-        broadcastAnswerResult(pinCode, player, currentQuestion, isCorrect, pointsEarned, newStreak);
-
-        // Broadcast leaderboard
-        broadcastLeaderboard(pinCode, session);
     }
 
     // ================== HOST: START GAME ==================
@@ -221,33 +159,6 @@ public class GameMessageService {
                 .collect(Collectors.toList());
 
         messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/players", playerInfos);
-    }
-
-    private void broadcastAnswerResult(String pinCode, Player player, Question question, boolean isCorrect, int pointsEarned, int streak) {
-        AnswerDTO correctAnswer = question.getAnswers()
-                .stream()
-                .filter(Answer::getIsCorrect)
-                .map(answer -> AnswerDTO.builder()
-                        .id(answer.getId())
-                        .answerText(answer.getAnswerText())
-                        .symbol(answer.getSymbol())
-                        .color(answer.getColor())
-                        .orderIndex(answer.getOrderIndex())
-                        .build())
-                .findFirst()
-                .orElse(null);
-
-        AnswerResultDTO result = AnswerResultDTO.builder()
-                .playerId(player.getId())
-                .nickname(player.getNickname())
-                .isCorrect(isCorrect)
-                .pointsEarned(pointsEarned)
-                .totalScore(player.getScore())
-                .streak(streak)
-                .correctAnswer(correctAnswer)
-                .build();
-
-        messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/answer-result", result);
     }
 
     private void broadcastLeaderboard(String pinCode, GameSession session) {

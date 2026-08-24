@@ -2,12 +2,9 @@ package com.kahoot.kahoot_backend.service;
 
 import com.kahoot.kahoot_backend.DTOs.game.GameCreateRequest;
 import com.kahoot.kahoot_backend.DTOs.game.GameSessionResponse;
-import com.kahoot.kahoot_backend.DTOs.game.PlayerJoinRequest;
-import com.kahoot.kahoot_backend.DTOs.game.PlayerResponse;
 import com.kahoot.kahoot_backend.enums.GameSessionStatus;
 import com.kahoot.kahoot_backend.exception.ResourceNotFoundException;
 import com.kahoot.kahoot_backend.model.GameSession;
-import com.kahoot.kahoot_backend.model.Player;
 import com.kahoot.kahoot_backend.model.Quiz;
 import com.kahoot.kahoot_backend.repository.GameSessionRepository;
 import com.kahoot.kahoot_backend.repository.PlayerRepository;
@@ -27,6 +24,7 @@ public class GameService {
     private final QuizRepository quizRepository;
     private final QuestionRepository questionRepository;
     private final PlayerRepository playerRepository;
+    private final PlayerService playerService;
 
     private static final int PIN_LENGTH = 6;
     private static final int MAX_PIN_RETRIES = 10;
@@ -119,28 +117,6 @@ public class GameService {
         return mapToSessionResponse(session, totalQuestions);
     }
 
-    @Transactional
-    public PlayerResponse joinGame(String pinCode, PlayerJoinRequest request) {
-        GameSession session = getSessionOrThrow(pinCode);
-        validateStatus(session, GameSessionStatus.WAITING, "Can only join while game is WAITING");
-
-        if (playerRepository.existsByGameSessionIdAndNickname(session.getId(), request.getNickname())) {
-            throw new IllegalArgumentException("Nickname '" + request.getNickname() + "' is already taken in this game");
-        }
-
-        Player player = Player.builder()
-                .gameSession(session)
-                .nickname(request.getNickname())
-                .score(0)
-                .streak(0)
-                .joinedAt(LocalDateTime.now())
-                .build();
-
-        player = playerRepository.save(player);
-
-        return mapToPlayerResponse(player);
-    }
-
     // ========================= HELPERS =========================
 
     private String generateUniquePin() {
@@ -165,16 +141,6 @@ public class GameService {
                 .currentQuestionIndex(session.getCurrentQuestionIndex())
                 .totalQuestions(totalQuestions)
                 .createdAt(session.getCreatedAt())
-                .build();
-    }
-
-    private PlayerResponse mapToPlayerResponse(Player player) {
-        return PlayerResponse.builder()
-                .id(player.getId())
-                .nickname(player.getNickname())
-                .score(player.getScore())
-                .streak(player.getStreak())
-                .joinedAt(player.getJoinedAt())
                 .build();
     }
 

@@ -6,6 +6,7 @@ import com.kahoot.kahoot_backend.DTOs.game.PlayerJoinRequest;
 import com.kahoot.kahoot_backend.DTOs.game.PlayerResponse;
 import com.kahoot.kahoot_backend.config.UserPrincipal;
 import com.kahoot.kahoot_backend.service.GameService;
+import com.kahoot.kahoot_backend.service.PlayerService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class GameController {
     private final GameService gameService;
+    private final PlayerService playerService;
 
     // ========================= HOST ENDPOINTS =========================
 
@@ -67,7 +69,7 @@ public class GameController {
 
     @PostMapping("/api/games/{pinCode}/join")
     public ResponseEntity<PlayerResponse> joinGame(@PathVariable String pinCode, @Valid @RequestBody PlayerJoinRequest request) {
-        PlayerResponse player = gameService.joinGame(pinCode, request);
+        PlayerResponse player = playerService.joinGame(pinCode, request.getNickname());
 
         return ResponseEntity.ok(player);
     }
