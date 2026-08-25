@@ -21,7 +21,8 @@ public class QuestionController {
 
     @GetMapping("/api/quizzes/{quizId}/questions")
     public ResponseEntity<List<QuestionResponse>> getQuestionsForQuiz(@AuthenticationPrincipal UserPrincipal userPrincipal, @PathVariable Long quizId) {
-        QuizResponse quiz = quizService.getQuizById(quizId);
+        Long userId = userPrincipal.getUser().getId();
+        QuizResponse quiz = quizService.getQuizById(quizId, userId);
 
         return ResponseEntity.ok(quiz.getQuestions());
     }
@@ -35,11 +36,8 @@ public class QuestionController {
 
         try {
             QuestionResponse question = quizService.addQuestion(quizId, userId, request);
-            System.out.println("SUCCESS: Question created with ID: " + question.getId());
             return ResponseEntity.ok(question);
         } catch (Exception e) {
-            System.out.println("CONTROLLER ERROR: " + e.getClass().getName() + " - " + e.getMessage());
-            e.printStackTrace();
             throw e;
         }
     }
@@ -53,11 +51,8 @@ public class QuestionController {
 
         try {
             QuestionResponse question = quizService.updateQuestion(id, userId, request);
-            System.out.println("SUCCESS: Question updated with ID: " + question.getId());
             return ResponseEntity.ok(question);
         } catch (Exception e) {
-            System.out.println("CONTROLLER ERROR: " + e.getClass().getName() + " - " + e.getMessage());
-            e.printStackTrace();
             throw e;
         }
     }

@@ -6,6 +6,7 @@ import com.kahoot.kahoot_backend.DTOs.game.AnswerSubmitRequest;
 import com.kahoot.kahoot_backend.DTOs.game.PlayerResponse;
 import com.kahoot.kahoot_backend.enums.GameSessionStatus;
 import com.kahoot.kahoot_backend.exception.ResourceNotFoundException;
+import com.kahoot.kahoot_backend.helper.GameSessionHelper;
 import com.kahoot.kahoot_backend.model.*;
 import com.kahoot.kahoot_backend.repository.GameSessionRepository;
 import com.kahoot.kahoot_backend.repository.PlayerAnswerRepository;
@@ -26,13 +27,14 @@ public class PlayerService {
     private final PlayerAnswerRepository playerAnswerRepository;
     private final QuestionRepository questionRepository;
     private final ScoringService scoringService;
+    private final GameSessionHelper sessionHelper;
 
     // ======================== JOIN GAME (REST + WebSocket) ========================
 
     @Transactional
     public PlayerResponse joinGame(String pinCode, String nickname) {
-        GameSession session = getSessionOrThrow(pinCode);
-        validateStatus(session, GameSessionStatus.WAITING, "Can only join while game is WAITING");
+        GameSession session = sessionHelper.getSessionOrThrow(pinCode);
+        sessionHelper.validateStatus(session, GameSessionStatus.WAITING, "Can only join while game is WAITING");
 
         if (playerRepository.existsByGameSessionIdAndNickname(session.getId(), nickname)) {
             throw new IllegalArgumentException("Nickname '" + nickname + "' is already taken in this game");
@@ -55,8 +57,8 @@ public class PlayerService {
 
     @Transactional
     public AnswerResultDTO submitAnswer(String pinCode, Long playerId, AnswerSubmitRequest request) {
-        GameSession session = getSessionOrThrow(pinCode);
-        validateStatus(session, GameSessionStatus.IN_PROGRESS, "Game is not IN_PROGRESS");
+        GameSession session = sessionHelper.getSessionOrThrow(pinCode);
+        sessionHelper.validateStatus(session, GameSessionStatus.IN_PROGRESS, "Game is not IN_PROGRESS");
 
         Player player = getPlayerOrThrow(playerId);
         validatePlayerInSession(player, session.getId());
@@ -127,7 +129,7 @@ public class PlayerService {
     // ======================== QUERY METHODS ========================
 
     public List<Player> getPlayers(String pinCode) {
-        GameSession session = getSessionOrThrow(pinCode);
+        GameSession session = sessionHelper.getSessionOrThrow(pinCode);
 
         return playerRepository.findByGameSessionId(session.getId());
     }
@@ -138,20 +140,9 @@ public class PlayerService {
 
     // ======================== HELPERS ========================
 
-    private GameSession getSessionOrThrow(String pinCode) {
-        return gameSessionRepository.findByPinCode(pinCode)
-                .orElseThrow(() -> new ResourceNotFoundException("Game session not found with PIN: " + pinCode));
-    }
-
     private Player getPlayerOrThrow(Long playerId) {
         return playerRepository.findById(playerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Player not found: " + playerId));
-    }
-
-    private void validateStatus(GameSession session, GameSessionStatus expectedStatus, String errorMessage) {
-        if (session.getStatus() != expectedStatus) {
-            throw new IllegalStateException(errorMessage + ". Current status: " + session.getStatus());
-        }
     }
 
     private void validatePlayerInSession(Player player, Long sessionId) {

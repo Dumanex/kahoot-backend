@@ -4,6 +4,7 @@ import com.kahoot.kahoot_backend.DTOs.game.GameCreateRequest;
 import com.kahoot.kahoot_backend.DTOs.game.GameSessionResponse;
 import com.kahoot.kahoot_backend.enums.GameSessionStatus;
 import com.kahoot.kahoot_backend.exception.ResourceNotFoundException;
+import com.kahoot.kahoot_backend.helper.GameSessionHelper;
 import com.kahoot.kahoot_backend.model.GameSession;
 import com.kahoot.kahoot_backend.model.Quiz;
 import com.kahoot.kahoot_backend.repository.GameSessionRepository;
@@ -28,6 +29,7 @@ public class GameService {
     private final PlayerRepository playerRepository;
     private final PlayerService playerService;
     private final TransactionTemplate transactionTemplate;
+    private final GameSessionHelper sessionHelper;
 
     private static final int PIN_LENGTH = 6;
     private static final int MAX_PIN_RETRIES = 10;
@@ -90,11 +92,11 @@ public class GameService {
     }
 
     @Transactional
-    public GameSessionResponse startGame(String pinCode ,Long userId) {
-        GameSession session = getSessionOrThrow(pinCode);
+    public GameSessionResponse startGame(String pinCode, Long userId) {
+        GameSession session = sessionHelper.getSessionOrThrow(pinCode);
 
-        validateHost(session, userId);
-        validateStatus(session, GameSessionStatus.WAITING, "Game can only be started from WAITING status");
+        sessionHelper.validateHost(session, userId);
+        sessionHelper.validateStatus(session, GameSessionStatus.WAITING, "Game can only be started from WAITING status");
 
         session.setStatus(GameSessionStatus.IN_PROGRESS);
         session.setStartedAt(LocalDateTime.now());
@@ -107,10 +109,10 @@ public class GameService {
 
     @Transactional
     public GameSessionResponse nextQuestion(String pinCode, Long userId) {
-        GameSession session = getSessionOrThrow(pinCode);
+        GameSession session = sessionHelper.getSessionOrThrow(pinCode);
 
-        validateHost(session, userId);
-        validateStatus(session, GameSessionStatus.IN_PROGRESS, "Game must be IN_PROGRESS to advance question");
+        sessionHelper.validateHost(session, userId);
+        sessionHelper.validateStatus(session, GameSessionStatus.IN_PROGRESS, "Game must be IN_PROGRESS to advance question");
 
         int totalQuestion = questionRepository.countByQuizId(session.getQuiz().getId());
         int nextIndex = session.getCurrentQuestionIndex() + 1;
@@ -127,10 +129,10 @@ public class GameService {
 
     @Transactional
     public GameSessionResponse endGame(String pinCode, Long userId) {
-        GameSession session = getSessionOrThrow(pinCode);
+        GameSession session = sessionHelper.getSessionOrThrow(pinCode);
 
-        validateHost(session, userId);
-        validateStatus(session, GameSessionStatus.IN_PROGRESS, "Game can only be ended from IN_PROGRESS status");
+        sessionHelper.validateHost(session, userId);
+        sessionHelper.validateStatus(session, GameSessionStatus.IN_PROGRESS, "Game can only be ended from IN_PROGRESS status");
 
         session.setStatus(GameSessionStatus.COMPLETED);
         session.setEndedAt(LocalDateTime.now());
@@ -143,7 +145,7 @@ public class GameService {
     // ========================= PUBLIC OPERATIONS (without JWT) =========================
 
     public GameSessionResponse getSessionByPin(String pinCode) {
-        GameSession session = getSessionOrThrow(pinCode);
+        GameSession session = sessionHelper.getSessionOrThrow(pinCode);
         int totalQuestions = questionRepository.countByQuizId(session.getQuiz().getId());
         return mapToSessionResponse(session, totalQuestions);
     }
@@ -173,22 +175,5 @@ public class GameService {
                 .totalQuestions(totalQuestions)
                 .createdAt(session.getCreatedAt())
                 .build();
-    }
-
-    private GameSession getSessionOrThrow(String pinCode) {
-        return gameSessionRepository.findByPinCode(pinCode)
-                .orElseThrow(() -> new ResourceNotFoundException("Game session not found with PIN: " + pinCode));
-    }
-
-    private void validateHost(GameSession session, Long userId) {
-        if (!session.getQuiz().getCreator().getId().equals(userId)) {
-            throw new SecurityException("You are not the creator of this quiz");
-        }
-    }
-
-    private void validateStatus(GameSession session, GameSessionStatus expectedStatus, String errorMessage) {
-        if (session.getStatus() != expectedStatus) {
-            throw new IllegalStateException(errorMessage + ". Current status: " +session.getStatus());
-        }
     }
 }

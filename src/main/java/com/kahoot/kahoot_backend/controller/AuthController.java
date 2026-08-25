@@ -4,6 +4,7 @@ import com.kahoot.kahoot_backend.DTOs.LoginRequest;
 import com.kahoot.kahoot_backend.DTOs.RegisterRequest;
 import com.kahoot.kahoot_backend.model.User;
 import com.kahoot.kahoot_backend.service.AuthService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,7 +21,7 @@ public class AuthController {
     private final AuthService authService;
 
     @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody RegisterRequest request) {
+    public ResponseEntity<?> register(@Valid @RequestBody RegisterRequest request) {
         User user = authService.register(request.getUsername(), request.getEmail(), request.getPassword());
 
         return ResponseEntity.ok(Map.of(
@@ -31,7 +32,7 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody LoginRequest request) {
+    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request) {
         String token = authService.login(request.getUsername(), request.getPassword());
 
         return ResponseEntity.ok(Map.of(

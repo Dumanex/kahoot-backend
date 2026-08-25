@@ -10,15 +10,17 @@ import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBr
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 
-import java.util.Arrays;
+import java.util.List;
 
 @Configuration
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private final WebSocketHandshakeInterceptor handshakeInterceptor;
+    private final CorsProperties corsProperties;
 
-    public WebSocketConfig(WebSocketHandshakeInterceptor handshakeInterceptor) {
+    public WebSocketConfig(WebSocketHandshakeInterceptor handshakeInterceptor, CorsProperties corsProperties) {
         this.handshakeInterceptor = handshakeInterceptor;
+        this.corsProperties = corsProperties;
     }
 
     @Override
@@ -33,21 +35,22 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         // WebSocket endpoint - frontend se konektuje ovde
-        // allowedOrigins("*") za development (frontend na drugom portu)
+        // Allowed origins from configuration
+        List<String> allowedOrigins = corsProperties.getAllowedOrigins();
         registry.addEndpoint("/ws")
-                .setAllowedOrigins("http://localhost:63342", "http://localhost:8080")
+                .setAllowedOrigins(allowedOrigins.toArray(new String[0]))
                 .addInterceptors(handshakeInterceptor)
                 .withSockJS(); // Fallback za browsere bez Websocket podrske
     }
 
     @Bean
     public CorsFilter corsFilter() {
-       CorsConfiguration config = new CorsConfiguration();
+        CorsConfiguration config = new CorsConfiguration();
 
-       config.setAllowedOrigins(Arrays.asList("http://localhost:63342", "http://localhost:8080"));
-       config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-       config.setAllowedHeaders(Arrays.asList("*"));
-       config.setAllowCredentials(true);
+        config.setAllowedOrigins(corsProperties.getAllowedOrigins());
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of("*"));
+        config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);

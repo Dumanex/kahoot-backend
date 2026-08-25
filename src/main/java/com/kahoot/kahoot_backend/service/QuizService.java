@@ -13,9 +13,10 @@ import com.kahoot.kahoot_backend.repository.QuizRepository;
 import com.kahoot.kahoot_backend.repository.UserRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -50,9 +51,11 @@ public class QuizService {
         return mapToQuizResponse(quiz);
     }
 
-    public QuizResponse getQuizById(Long quizId) {
+    public QuizResponse getQuizById(Long quizId, Long userId) {
         Quiz quiz = quizRepository.findById(quizId)
                 .orElseThrow(() -> new ResourceNotFoundException("Quiz not found: " + quizId));
+
+        validateOwnership(quiz, userId);
 
         return mapToQuizResponseWithQuestions(quiz);
     }
@@ -65,6 +68,14 @@ public class QuizService {
                 .stream()
                 .map(this::mapToQuizResponse)
                 .collect(Collectors.toList());
+    }
+
+    public Page<QuizResponse> getUserQuizzesPaged(Long userId, Pageable pageable) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
+
+        return quizRepository.findByCreatorId(user.getId(), pageable)
+                .map(this::mapToQuizResponse);
     }
 
     @Transactional
