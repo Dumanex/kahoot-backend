@@ -15,6 +15,12 @@ import java.util.Arrays;
 @Configuration
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
+    private final WebSocketHandshakeInterceptor handshakeInterceptor;
+
+    public WebSocketConfig(WebSocketHandshakeInterceptor handshakeInterceptor) {
+        this.handshakeInterceptor = handshakeInterceptor;
+    }
+
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
         // Server -> Client: topic prefix za broadcast (npr. /topic/game/123456/players)
@@ -30,6 +36,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         // allowedOrigins("*") za development (frontend na drugom portu)
         registry.addEndpoint("/ws")
                 .setAllowedOrigins("http://localhost:63342", "http://localhost:8080")
+                .addInterceptors(handshakeInterceptor)
                 .withSockJS(); // Fallback za browsere bez Websocket podrske
     }
 

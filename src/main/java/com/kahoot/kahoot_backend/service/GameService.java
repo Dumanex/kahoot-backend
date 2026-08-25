@@ -12,7 +12,9 @@ import com.kahoot.kahoot_backend.repository.QuestionRepository;
 import com.kahoot.kahoot_backend.repository.QuizRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.Random;
@@ -25,6 +27,7 @@ public class GameService {
     private final QuestionRepository questionRepository;
     private final PlayerRepository playerRepository;
     private final PlayerService playerService;
+    private final TransactionTemplate transactionTemplate;
 
     private static final int PIN_LENGTH = 6;
     private static final int MAX_PIN_RETRIES = 10;
@@ -32,8 +35,25 @@ public class GameService {
 
     // ========================= HOST OPERATIONS =========================
 
-    @Transactional
     public GameSessionResponse createSession(Long userId, GameCreateRequest request) {
+        return transactionTemplate.execute(status -> {
+            for (int attempt = 0; attempt < MAX_PIN_RETRIES; attempt++) {
+                try {
+                    return doCreateSession(userId, request);
+                } catch (DataIntegrityViolationException e) {
+                    if (isPinCollision(e)) {
+                        // PIN collision - retry with new PIN
+                        continue;
+                    }
+                    throw e;
+                }
+            }
+            throw new IllegalStateException("Failed to create game session after " + MAX_PIN_RETRIES + " attempts");
+        });
+    }
+
+    @Transactional
+    protected GameSessionResponse doCreateSession(Long userId, GameCreateRequest request) {
         Quiz quiz = quizRepository.findById(request.getQuizId())
                 .orElseThrow(() -> new ResourceNotFoundException("Quiz not found: " + request.getQuizId()));
 
@@ -53,9 +73,20 @@ public class GameService {
                 .createdAt(LocalDateTime.now())
                 .build();
 
-        session = gameSessionRepository.save(session);
+        session = gameSessionRepository.saveAndFlush(session);
 
         return mapToSessionResponse(session, totalQuestions);
+    }
+
+    private boolean isPinCollision(DataIntegrityViolationException e) {
+        Throwable cause = e.getCause();
+        while (cause != null) {
+            if (cause.getMessage() != null && cause.getMessage().contains("pin_code")) {
+                return true;
+            }
+            cause = cause.getCause();
+        }
+        return false;
     }
 
     @Transactional
