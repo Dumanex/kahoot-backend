@@ -45,5 +45,6 @@ public class Question {
     private Integer orderIndex;
 
     @OneToMany(mappedBy = "question", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @OrderBy("orderIndex ASC")
     private List<Answer> answers = new ArrayList<>();
 }

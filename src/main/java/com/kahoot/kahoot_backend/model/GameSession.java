@@ -8,6 +8,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "game_sessions")
@@ -21,7 +23,7 @@ public class GameSession {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "quiz_id")
+    @JoinColumn(name = "quiz_id", nullable = false)
     private Quiz quiz;
 
     @Column(name = "pin_code", unique = true, nullable = false)
@@ -42,6 +44,9 @@ public class GameSession {
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
+
+    @OneToMany(mappedBy = "gameSession", fetch = FetchType.LAZY)
+    private List<Player> players = new ArrayList<>();
 
     @PrePersist
     protected void onCreate() {

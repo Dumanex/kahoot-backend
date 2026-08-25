@@ -41,6 +41,9 @@ public class Player {
     @Column(name = "joined_at")
     private LocalDateTime joinedAt;
 
+    @Version
+    private Long version;
+
     @PrePersist
     protected void onCreate() {
         joinedAt = LocalDateTime.now();

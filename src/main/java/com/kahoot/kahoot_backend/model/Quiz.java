@@ -7,6 +7,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "quizzes")
@@ -34,6 +36,13 @@ public class Quiz {
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
+
+    @OneToMany(mappedBy = "quiz", fetch = FetchType.LAZY)
+    @OrderBy("orderIndex ASC")
+    private List<Question> questions = new ArrayList<>();
+
+    @OneToMany(mappedBy = "quiz", fetch = FetchType.LAZY)
+    private List<GameSession> gameSessions = new ArrayList<>();
 
     @PrePersist
     protected void onCreate() {

@@ -22,6 +22,8 @@ public class ScoringService {
         if (!isCorrect) {
             return 0;
         }
+        if (responseTimeMs < 0) responseTimeMs = 0; // clamp negative
+        if (timeLimitSeconds <= 0) timeLimitSeconds = 1; // avoid div by zero
 
         double timeLimitMs = timeLimitSeconds * 1000.0;
         double speedRatio = Math.max(0.0, 1.0 - (responseTimeMs / timeLimitMs));
