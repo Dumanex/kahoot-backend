@@ -11,6 +11,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
@@ -18,6 +20,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class QuestionController {
     private final QuizService quizService;
+    private static final Logger log = LoggerFactory.getLogger(QuestionController.class);
 
     @GetMapping("/api/quizzes/{quizId}/questions")
     public ResponseEntity<List<QuestionResponse>> getQuestionsForQuiz(@AuthenticationPrincipal UserPrincipal userPrincipal, @PathVariable Long quizId) {
@@ -33,15 +36,10 @@ public class QuestionController {
             @Valid @RequestBody QuestionCreateRequest request) {
         Long userId = userPrincipal.getUser().getId();
 
-        try {
-            QuestionResponse question = quizService.addQuestion(quizId, userId, request);
-            System.out.println("SUCCESS: Question created with ID: " + question.getId());
-            return ResponseEntity.ok(question);
-        } catch (Exception e) {
-            System.out.println("CONTROLLER ERROR: " + e.getClass().getName() + " - " + e.getMessage());
-            e.printStackTrace();
-            throw e;
-        }
+
+        QuestionResponse question = quizService.addQuestion(quizId, userId, request);
+        log.debug("Question created with ID: {}", question.getId());
+        return ResponseEntity.ok(question);
     }
 
     @PutMapping("/api/questions/{id}")
@@ -51,15 +49,10 @@ public class QuestionController {
             @RequestBody QuestionUpdateRequest request) {
         Long userId = userPrincipal.getUser().getId();
 
-        try {
-            QuestionResponse question = quizService.updateQuestion(id, userId, request);
-            System.out.println("SUCCESS: Question updated with ID: " + question.getId());
-            return ResponseEntity.ok(question);
-        } catch (Exception e) {
-            System.out.println("CONTROLLER ERROR: " + e.getClass().getName() + " - " + e.getMessage());
-            e.printStackTrace();
-            throw e;
-        }
+        QuestionResponse question = quizService.updateQuestion(id, userId, request);
+        log.debug("Question updated with ID: {}", question.getId());
+
+        return ResponseEntity.ok(question);
     }
 
     @DeleteMapping("/api/questions/{id}")
