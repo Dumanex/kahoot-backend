@@ -7,11 +7,13 @@ import com.kahoot.kahoot_backend.config.UserPrincipal;
 import com.kahoot.kahoot_backend.service.QuizService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/quizzes")
@@ -20,9 +22,11 @@ public class QuizController {
     private final QuizService quizService;
 
     @GetMapping
-    public ResponseEntity<List<QuizResponse>> getMyQuizzes (@AuthenticationPrincipal UserPrincipal userPrincipal) {
+    public ResponseEntity<Page<QuizResponse>> getMyQuizzes (
+            @AuthenticationPrincipal UserPrincipal userPrincipal,
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
         Long userId = userPrincipal.getUser().getId();
-        List<QuizResponse> quizzes = quizService.getUserQuizzes(userId);
+        Page<QuizResponse> quizzes = quizService.getUserQuizzes(userId, pageable);
 
         return ResponseEntity.ok(quizzes);
     }
