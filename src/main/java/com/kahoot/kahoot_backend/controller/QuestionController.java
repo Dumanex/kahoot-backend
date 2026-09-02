@@ -24,7 +24,8 @@ public class QuestionController {
 
     @GetMapping("/api/quizzes/{quizId}/questions")
     public ResponseEntity<List<QuestionResponse>> getQuestionsForQuiz(@AuthenticationPrincipal UserPrincipal userPrincipal, @PathVariable Long quizId) {
-        QuizResponse quiz = quizService.getQuizById(quizId);
+        Long userId = userPrincipal.getUser().getId();
+        QuizResponse quiz = quizService.getQuizById(quizId, userId);
 
         return ResponseEntity.ok(quiz.getQuestions());
     }

@@ -45,7 +45,8 @@ public class QuizController {
     public ResponseEntity<QuizResponse> getQuizById(
             @AuthenticationPrincipal UserPrincipal userPrincipal,
             @PathVariable Long id) {
-        QuizResponse quiz = quizService.getQuizById(id);
+        Long userId = userPrincipal.getUser().getId();
+        QuizResponse quiz = quizService.getQuizById(id, userId);
 
         return ResponseEntity.ok(quiz);
     }

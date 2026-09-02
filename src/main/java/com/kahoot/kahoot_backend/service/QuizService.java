@@ -51,9 +51,11 @@ public class QuizService {
         return mapToQuizResponse(quiz);
     }
 
-    public QuizResponse getQuizById(Long quizId) {
+    public QuizResponse getQuizById(Long quizId, Long userId) {
         Quiz quiz = quizRepository.findById(quizId)
                 .orElseThrow(() -> new ResourceNotFoundException("Quiz not found: " + quizId));
+
+        validateOwnership(quiz, userId);
 
         return mapToQuizResponseWithQuestions(quiz);
     }
