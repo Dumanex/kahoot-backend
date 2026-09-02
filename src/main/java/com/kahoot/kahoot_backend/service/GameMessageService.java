@@ -32,27 +32,14 @@ public class GameMessageService {
     // ================== PLAYER JOIN (WebSocket) ==================
     @Transactional
     public void handlePlayerJoin(String pinCode, String nickname) {
+        try {
+            playerService.joinGame(pinCode, nickname);
+        } catch (IllegalArgumentException | IllegalStateException | ResourceNotFoundException e) {
+            sendError(pinCode, e.getMessage());
+            return;
+        }
+
         GameSession session = getSessionOrThrow(pinCode);
-
-        if (session.getStatus() != GameSessionStatus.WAITING) {
-            sendError(pinCode, "Cannot join: game is not in WAITING status");
-            return;
-        }
-
-        if (playerRepository.existsByGameSessionIdAndNickname(session.getId(), nickname)) {
-            sendError(pinCode, "Nickname '" + nickname + "' is already taken");
-            return;
-        }
-
-        Player player = Player.builder()
-                .gameSession(session)
-                .nickname(nickname)
-                .score(0)
-                .streak(0)
-                .joinedAt(LocalDateTime.now())
-                .build();
-
-        player = playerRepository.save(player);
 
         // Broadcast players list to everyone
         broadcastPlayerList(pinCode, session);
