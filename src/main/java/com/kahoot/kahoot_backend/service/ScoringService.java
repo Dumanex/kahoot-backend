@@ -23,6 +23,13 @@ public class ScoringService {
             return 0;
         }
 
+        if (responseTimeMs < 0) {
+            responseTimeMs = 0;
+        }
+        if (timeLimitSeconds <= 0) {
+            timeLimitSeconds = 1;
+        }
+
         double timeLimitMs = timeLimitSeconds * 1000.0;
         double speedRatio = Math.max(0.0, 1.0 - (responseTimeMs / timeLimitMs));
         int speedBonus = (int) Math.round(MAX_SPEED_BONUS * speedRatio);
