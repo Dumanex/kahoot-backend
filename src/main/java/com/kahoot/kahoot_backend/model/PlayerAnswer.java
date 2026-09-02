@@ -9,7 +9,10 @@ import java.time.LocalDateTime;
 @Table(name = "player_answers", indexes = {
         @Index(name = "idx_player_answers_player", columnList = "player_id"),
         @Index(name = "idx_player_answers_question", columnList = "question_id")
-})
+}, uniqueConstraints = @UniqueConstraint(
+        name = "uk_player_answers_player_question",
+        columnNames = {"player_id", "question_id"}
+))
 @Getter
 @Setter
 @ToString

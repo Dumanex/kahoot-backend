@@ -69,20 +69,27 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException ex, HttpServletRequest request) {
-        log.warn("Data integrity violation: {} - URI: {}", ex.getMostSpecificCause().getMessage(), request.getRequestURI());
-
         String message = ex.getMostSpecificCause().getMessage();
-        String userMessage = "Username or email already exists";
+        log.warn("Data integrity violation: {} - URI: {}", message, request.getRequestURI());
 
-        if (message != null && message.contains("username")) {
-            userMessage = "Username already exists";
-        } else if (message != null && message.contains("email")) {
-            userMessage = "Email already exists";
+        String userMessage = "This action conflicts with existing data";
+
+        if (message != null) {
+            if (message.contains("username")) {
+                userMessage = "Username already exists";
+            } else if (message.contains("email")) {
+                userMessage = "Email already exists";
+            } else if (message.contains("uk_player_answers_player_question")) {
+                userMessage = "You have already answered this question";
+            } else if (message.contains("uk_game_session_nickname")) {
+                userMessage = "Nickname is already taken in this game";
+            }
         }
 
         ErrorResponse error = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.CONFLICT.value())
+                .error(HttpStatus.CONFLICT.getReasonPhrase())
                 .message(userMessage)
                 .path(request.getRequestURI())
                 .build();
