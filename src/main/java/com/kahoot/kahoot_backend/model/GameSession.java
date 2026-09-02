@@ -21,7 +21,7 @@ public class GameSession {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "quiz_id")
+    @JoinColumn(name = "quiz_id", nullable = false)
     private Quiz quiz;
 
     @Column(name = "pin_code", unique = true, nullable = false)
