@@ -6,7 +6,9 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "answers")
+@Table(name = "answers", indexes = {
+        @Index(name = "idx_answers_question", columnList = "question_id")
+})
 @Getter
 @Setter
 @ToString
