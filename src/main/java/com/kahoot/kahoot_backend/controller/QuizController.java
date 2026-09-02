@@ -32,7 +32,9 @@ public class QuizController {
     }
 
     @PostMapping
-    public ResponseEntity<QuizResponse> createQuiz(@AuthenticationPrincipal UserPrincipal userPrincipal, @Valid @RequestBody QuizCreateRequest request) {
+    public ResponseEntity<QuizResponse> createQuiz(
+            @AuthenticationPrincipal UserPrincipal userPrincipal,
+            @Valid @RequestBody QuizCreateRequest request) {
         Long userId = userPrincipal.getUser().getId();
         QuizResponse quiz = quizService.createQuiz(userId, request);
 
@@ -40,14 +42,19 @@ public class QuizController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<QuizResponse> getQuizById(@AuthenticationPrincipal UserPrincipal userPrincipal, @PathVariable Long id) {
+    public ResponseEntity<QuizResponse> getQuizById(
+            @AuthenticationPrincipal UserPrincipal userPrincipal,
+            @PathVariable Long id) {
         QuizResponse quiz = quizService.getQuizById(id);
 
         return ResponseEntity.ok(quiz);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<QuizResponse> updateQuiz(@AuthenticationPrincipal UserPrincipal userPrincipal, @PathVariable Long id, @RequestBody QuizUpdateRequest request) {
+    public ResponseEntity<QuizResponse> updateQuiz(
+            @AuthenticationPrincipal UserPrincipal userPrincipal,
+            @PathVariable Long id,
+            @Valid @RequestBody QuizUpdateRequest request) {
         Long userId = userPrincipal.getUser().getId();
         QuizResponse quiz = quizService.updateQuiz(id, userId, request);
 
@@ -55,7 +62,9 @@ public class QuizController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteQuiz(@AuthenticationPrincipal UserPrincipal userPrincipal, @PathVariable Long id) {
+    public ResponseEntity<Void> deleteQuiz(
+            @AuthenticationPrincipal UserPrincipal userPrincipal,
+            @PathVariable Long id) {
         Long userId = userPrincipal.getUser().getId();
         quizService.deleteQuiz(id, userId);
 

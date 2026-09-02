@@ -46,7 +46,7 @@ public class QuestionController {
     public ResponseEntity<QuestionResponse> updateQuestion(
             @AuthenticationPrincipal UserPrincipal userPrincipal,
             @PathVariable Long id,
-            @RequestBody QuestionUpdateRequest request) {
+            @Valid @RequestBody QuestionUpdateRequest request) {
         Long userId = userPrincipal.getUser().getId();
 
         QuestionResponse question = quizService.updateQuestion(id, userId, request);
@@ -56,7 +56,9 @@ public class QuestionController {
     }
 
     @DeleteMapping("/api/questions/{id}")
-    public ResponseEntity<Void> deleteQuestion(@AuthenticationPrincipal UserPrincipal userPrincipal, @PathVariable Long id) {
+    public ResponseEntity<Void> deleteQuestion(
+            @AuthenticationPrincipal UserPrincipal userPrincipal,
+            @PathVariable Long id) {
         Long userId = userPrincipal.getUser().getId();
         quizService.deleteQuestion(id, userId);
 
