@@ -38,6 +38,10 @@ public class Player {
     @Column(name = "streak")
     private Integer streak = 0;
 
+    @Version
+    @Column(name = "version")
+    private Long version;
+
     @Column(name = "joined_at")
     private LocalDateTime joinedAt;
 
