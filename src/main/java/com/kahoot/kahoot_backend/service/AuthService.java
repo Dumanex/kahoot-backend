@@ -1,5 +1,6 @@
 package com.kahoot.kahoot_backend.service;
 
+import com.kahoot.kahoot_backend.DTOs.AuthResponse;
 import com.kahoot.kahoot_backend.model.User;
 import com.kahoot.kahoot_backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -13,7 +14,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
 
-    public User register(String username, String email, String password) {
+    public AuthResponse register(String username, String email, String password) {
         if (userRepository.findByUsername(username).isPresent()) {
             throw new RuntimeException("Username already exists");
         }
@@ -27,10 +28,16 @@ public class AuthService {
                 .passwordHash(passwordEncoder.encode(password))
                 .build();
 
-        return userRepository.save(user);
+        User savedUser = userRepository.save(user);
+
+        return AuthResponse.builder()
+                .id(savedUser.getId())
+                .username(savedUser.getUsername())
+                .email(savedUser.getEmail())
+                .build();
     }
 
-    public String login(String username, String password) {
+    public AuthResponse login(String username, String password) {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("Invalid credentials"));
 
@@ -38,6 +45,15 @@ public class AuthService {
             throw new RuntimeException("Invalid credentials");
         }
 
-        return jwtService.generateToken(user);
+        String token = jwtService.generateToken(user);
+
+        return AuthResponse.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .email(user.getEmail())
+                .token(token)
+                .tokenType("Bearer")
+                .expiresIn(jwtService.getExpirationMs())
+                .build();
     }
 }
