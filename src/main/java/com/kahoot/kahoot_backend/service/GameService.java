@@ -85,7 +85,7 @@ public class GameService {
         int nextIndex = session.getCurrentQuestionIndex() + 1;
 
         if (nextIndex >= totalQuestion) {
-            throw new IllegalStateException("No more questions available");
+            return endGame(pinCode, userId);
         }
 
         session.setCurrentQuestionIndex(nextIndex);
