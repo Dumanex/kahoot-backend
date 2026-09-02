@@ -1,6 +1,8 @@
 package com.kahoot.kahoot_backend.service;
 
 import com.kahoot.kahoot_backend.DTOs.AuthResponse;
+import com.kahoot.kahoot_backend.exception.DuplicateResourceException;
+import com.kahoot.kahoot_backend.exception.InvalidCredentialsException;
 import com.kahoot.kahoot_backend.model.User;
 import com.kahoot.kahoot_backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -16,10 +18,10 @@ public class AuthService {
 
     public AuthResponse register(String username, String email, String password) {
         if (userRepository.findByUsername(username).isPresent()) {
-            throw new RuntimeException("Username already exists");
+            throw new DuplicateResourceException("Username already exists");
         }
         if (userRepository.findByEmail(email).isPresent()) {
-            throw new RuntimeException("Email already exists");
+            throw new DuplicateResourceException("Email already exists");
         }
 
         User user = User.builder()
@@ -39,10 +41,10 @@ public class AuthService {
 
     public AuthResponse login(String username, String password) {
         User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("Invalid credentials"));
+                .orElseThrow(() -> new InvalidCredentialsException("Invalid credentials"));
 
         if (!passwordEncoder.matches(password, user.getPasswordHash())) {
-            throw new RuntimeException("Invalid credentials");
+            throw new InvalidCredentialsException("Invalid credentials");
         }
 
         String token = jwtService.generateToken(user);
