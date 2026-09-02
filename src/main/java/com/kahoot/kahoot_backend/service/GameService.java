@@ -25,6 +25,7 @@ public class GameService {
     private final QuestionRepository questionRepository;
     private final PlayerRepository playerRepository;
     private final PlayerService playerService;
+    private final GameMessageService gameMessageService;
 
     private static final int PIN_LENGTH = 6;
     private static final int MAX_PIN_RETRIES = 10;
@@ -70,6 +71,8 @@ public class GameService {
         session.setCurrentQuestionIndex(0);
         session = gameSessionRepository.save(session);
 
+        gameMessageService.broadcastGameStarted(pinCode, session);
+
         int totalQuestions = questionRepository.countByQuizId(session.getQuiz().getId());
         return mapToSessionResponse(session, totalQuestions);
     }
@@ -91,6 +94,8 @@ public class GameService {
         session.setCurrentQuestionIndex(nextIndex);
         session = gameSessionRepository.save(session);
 
+        gameMessageService.broadcastCurrentQuestion(pinCode, session);
+
         return mapToSessionResponse(session, totalQuestion);
     }
 
@@ -104,6 +109,8 @@ public class GameService {
         session.setStatus(GameSessionStatus.COMPLETED);
         session.setEndedAt(LocalDateTime.now());
         session = gameSessionRepository.save(session);
+
+        gameMessageService.broadcastFinalResults(pinCode, session);
 
         int totalQuestion = questionRepository.countByQuizId(session.getQuiz().getId());
         return mapToSessionResponse(session, totalQuestion);

@@ -83,6 +83,10 @@ public class GameMessageService {
         session.setCurrentQuestionIndex(0);
         gameSessionRepository.save(session);
 
+        broadcastGameStarted(pinCode, session);
+    }
+
+    public void broadcastGameStarted(String pinCode, GameSession session) {
         // Broadcast started event
         messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/started", new GameStartedDTO());
 
@@ -165,7 +169,7 @@ public class GameMessageService {
         messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/leaderboard", leaderboard);
     }
 
-    private void broadcastCurrentQuestion(String pinCode, GameSession session) {
+    public void broadcastCurrentQuestion(String pinCode, GameSession session) {
         Question question = getCurrentQuestion(session);
 
         if (question == null) {
@@ -197,7 +201,7 @@ public class GameMessageService {
         messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/question", questionDTO);
     }
 
-    private void broadcastFinalResults(String pinCode, GameSession session) {
+    public void broadcastFinalResults(String pinCode, GameSession session) {
         List<Player> players = playerRepository.findByGameSessionId(session.getId());
 
         List<LeaderboardEntryDTO> finalLeaderboard = players
