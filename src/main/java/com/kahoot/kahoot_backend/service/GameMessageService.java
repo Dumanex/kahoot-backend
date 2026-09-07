@@ -126,6 +126,11 @@ public class GameMessageService {
     public void handleEndGame(String pinCode) {
         GameSession session = getSessionOrThrow(pinCode);
 
+        if (session.getStatus() != GameSessionStatus.IN_PROGRESS) {
+            sendError(pinCode, "Game is not IN_PROGRESS");
+            return;
+        }
+
         session.setStatus(GameSessionStatus.COMPLETED);
         session.setEndedAt(LocalDateTime.now());
         gameSessionRepository.save(session);
