@@ -87,6 +87,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/games/{pinCode}").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/games/{pinCode}/join").permitAll()
                         .requestMatchers("/ws/**").permitAll()
+                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
