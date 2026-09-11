@@ -132,8 +132,8 @@ public class GlobalExceptionHandlerTest {
         ResponseEntity<ErrorResponse> response = handler.handleValidationErrors(ex, request);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(response.getBody().getMessage()).contains("username");
-        assertThat(response.getBody().getMessage()).contains("must not be blank");
+        assertThat(response.getBody().getMessage()).isEqualTo("Validation failed");
+        assertThat(response.getBody().getErrors()).containsEntry("username", "must not be blank");
     }
 
     @Test
