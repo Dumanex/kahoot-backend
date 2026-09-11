@@ -35,3 +35,4 @@ build/
 # Project documentation (local only)
 CODE_EXPLANATIONS.md
 PROJECT_PROGRESS.md
+WEBSOCKET_API.md

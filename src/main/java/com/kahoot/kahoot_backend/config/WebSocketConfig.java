@@ -29,7 +29,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         // WebSocket endpoint - frontend se konektuje ovde
         // allowedOrigins("*") za development (frontend na drugom portu)
         registry.addEndpoint("/ws")
-                .setAllowedOrigins("http://localhost:63342", "http://localhost:8080")
+                .setAllowedOrigins("http://localhost:63342", "http://localhost:8080", "http://localhost:5173")
                 .withSockJS(); // Fallback za browsere bez Websocket podrske
     }
 
@@ -37,7 +37,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public CorsFilter corsFilter() {
        CorsConfiguration config = new CorsConfiguration();
 
-       config.setAllowedOrigins(Arrays.asList("http://localhost:63342", "http://localhost:8080"));
+       config.setAllowedOrigins(Arrays.asList("http://localhost:63342", "http://localhost:8080", "http://localhost:5173"));
        config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
        config.setAllowedHeaders(Arrays.asList("*"));
        config.setAllowCredentials(true);
