@@ -65,7 +65,7 @@ public class QuizService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
 
         return quizRepository.findByCreatorId(userId, pageable)
-                .map(this::mapToQuizResponse);
+                .map(this::mapToQuizResponseWithQuestions);
     }
 
     @Transactional
