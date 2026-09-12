@@ -1,11 +1,7 @@
 package com.kahoot.kahoot_backend.config;
 
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.web.filter.CorsFilter;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
@@ -31,20 +27,5 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         registry.addEndpoint("/ws")
                 .setAllowedOrigins("http://localhost:63342", "http://localhost:8080", "http://localhost:5173")
                 .withSockJS(); // Fallback za browsere bez Websocket podrske
-    }
-
-    @Bean
-    public CorsFilter corsFilter() {
-       CorsConfiguration config = new CorsConfiguration();
-
-       config.setAllowedOrigins(Arrays.asList("http://localhost:63342", "http://localhost:8080", "http://localhost:5173"));
-       config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-       config.setAllowedHeaders(Arrays.asList("*"));
-       config.setAllowCredentials(true);
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
-
-        return new CorsFilter(source);
     }
 }
