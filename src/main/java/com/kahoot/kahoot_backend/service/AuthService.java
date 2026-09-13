@@ -32,10 +32,15 @@ public class AuthService {
 
         User savedUser = userRepository.save(user);
 
+        String token = jwtService.generateToken(savedUser);
+
         return AuthResponse.builder()
                 .id(savedUser.getId())
                 .username(savedUser.getUsername())
                 .email(savedUser.getEmail())
+                .token(token)
+                .tokenType("Bearer")
+                .expiresIn(jwtService.getExpirationMs())
                 .build();
     }
 

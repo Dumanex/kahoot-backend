@@ -173,7 +173,7 @@ public class PlayerServiceTest {
 
         AnswerResultDTO result = playerService.submitAnswer("123456", 5L, submitRequest(1L));
 
-        assertThat(result.isCorrect()).isTrue();
+        assertThat(result.getIsCorrect()).isTrue();
         assertThat(result.getPointsEarned()).isEqualTo(1200);
         assertThat(result.getTotalScore()).isEqualTo(1200);
         assertThat(result.getStreak()).isEqualTo(3);
@@ -191,7 +191,7 @@ public class PlayerServiceTest {
 
         AnswerResultDTO result = playerService.submitAnswer("123456", 5L, submitRequest(2L));
 
-        assertThat(result.isCorrect()).isFalse();
+        assertThat(result.getIsCorrect()).isFalse();
         assertThat(result.getPointsEarned()).isZero();
         assertThat(result.getStreak()).isZero();
     }

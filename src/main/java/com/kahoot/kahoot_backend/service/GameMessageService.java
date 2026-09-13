@@ -30,7 +30,6 @@ public class GameMessageService {
     private static final String TOPIC_PREFIX = "/topic/game/";
 
     // ================== PLAYER JOIN (WebSocket) ==================
-    @Transactional
     public void handlePlayerJoin(String pinCode, String nickname) {
         try {
             playerService.joinGame(pinCode, nickname);
@@ -46,8 +45,6 @@ public class GameMessageService {
     }
 
     // ================== PLAYER ANSWER ==================
-
-    @Transactional
     public void handlePlayerAnswer(String pinCode, AnswerSubmitRequest request) {
         try {
             AnswerResultDTO result = playerService.submitAnswer(pinCode, request.getPlayerId(), request);

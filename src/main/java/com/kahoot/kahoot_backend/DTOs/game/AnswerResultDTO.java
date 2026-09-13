@@ -14,7 +14,7 @@ public class AnswerResultDTO {
 
     private String nickname;
 
-    private boolean isCorrect;
+    private Boolean isCorrect;
 
     private int pointsEarned;
 

@@ -7,6 +7,7 @@ import com.kahoot.kahoot_backend.config.UserPrincipal;
 import com.kahoot.kahoot_backend.service.QuizService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -24,7 +25,7 @@ public class QuizController {
     @GetMapping
     public ResponseEntity<Page<QuizResponse>> getMyQuizzes (
             @AuthenticationPrincipal UserPrincipal userPrincipal,
-            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+            @ParameterObject @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
         Long userId = userPrincipal.getUser().getId();
         Page<QuizResponse> quizzes = quizService.getUserQuizzes(userId, pageable);
 
