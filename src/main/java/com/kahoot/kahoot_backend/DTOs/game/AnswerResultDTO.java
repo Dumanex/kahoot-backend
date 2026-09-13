@@ -16,6 +16,8 @@ public class AnswerResultDTO {
 
     private Boolean isCorrect;
 
+    private Long chosenAnswerId;
+
     private int pointsEarned;
 
     private int totalScore;

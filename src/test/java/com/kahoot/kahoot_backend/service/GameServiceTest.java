@@ -173,6 +173,7 @@ public class GameServiceTest {
 
         assertThat(response.getCurrentQuestionIndex()).isEqualTo(1);
         assertThat(response.getStatus()).isEqualTo(GameSessionStatus.IN_PROGRESS);
+        verify(gameMessageService).finalizeUnansweredPlayers(eq("123456"), any(GameSession.class));
         verify(gameMessageService).broadcastCurrentQuestion(eq("123456"), any(GameSession.class));
         verify(gameMessageService, never()).broadcastFinalResults(anyString(), any(GameSession.class));
     }
@@ -187,6 +188,7 @@ public class GameServiceTest {
         GameSessionResponse response = gameService.nextQuestion("123456", HOST_ID);
 
         assertThat(response.getStatus()).isEqualTo(GameSessionStatus.COMPLETED);
+        verify(gameMessageService).finalizeUnansweredPlayers(eq("123456"), any(GameSession.class));
         verify(gameMessageService).broadcastFinalResults(eq("123456"), any(GameSession.class));
         verify(gameMessageService, never()).broadcastCurrentQuestion(anyString(), any(GameSession.class));
     }

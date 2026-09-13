@@ -24,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -174,6 +175,7 @@ public class PlayerServiceTest {
         AnswerResultDTO result = playerService.submitAnswer("123456", 5L, submitRequest(1L));
 
         assertThat(result.getIsCorrect()).isTrue();
+        assertThat(result.getChosenAnswerId()).isEqualTo(1L);
         assertThat(result.getPointsEarned()).isEqualTo(1200);
         assertThat(result.getTotalScore()).isEqualTo(1200);
         assertThat(result.getStreak()).isEqualTo(3);
@@ -192,6 +194,7 @@ public class PlayerServiceTest {
         AnswerResultDTO result = playerService.submitAnswer("123456", 5L, submitRequest(2L));
 
         assertThat(result.getIsCorrect()).isFalse();
+        assertThat(result.getChosenAnswerId()).isEqualTo(2L);
         assertThat(result.getPointsEarned()).isZero();
         assertThat(result.getStreak()).isZero();
     }
@@ -282,6 +285,38 @@ public class PlayerServiceTest {
 
         assertThatThrownBy(() -> playerService.submitAnswer("123456", 5L, submitRequest(2L)))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    // Finalize Unanswered Players
+    @Test
+    void finalizeUnansweredPlayers_playerDidNotAnswer_shouldResetStreakAndReturnResult() {
+        when(playerRepository.findByGameSessionId(20L)).thenReturn(List.of(player));
+        when(playerAnswerRepository.existsByPlayerIdAndQuestionId(5L, 10L)).thenReturn(false);
+        when(playerRepository.save(any(Player.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<AnswerResultDTO> results = playerService.finalizeUnansweredPlayers(session, question);
+
+        assertThat(results).hasSize(1);
+        AnswerResultDTO result = results.get(0);
+        assertThat(result.getPlayerId()).isEqualTo(5L);
+        assertThat(result.getIsCorrect()).isFalse();
+        assertThat(result.getChosenAnswerId()).isNull();
+        assertThat(result.getPointsEarned()).isZero();
+        assertThat(result.getStreak()).isZero();
+        assertThat(result.getCorrectAnswer().getId()).isEqualTo(1L);
+        assertThat(player.getStreak()).isZero();
+        verify(playerRepository).save(player);
+    }
+
+    @Test
+    void finalizeUnansweredPlayers_playerAlreadyAnswered_shouldBeExcluded() {
+        when(playerRepository.findByGameSessionId(20L)).thenReturn(List.of(player));
+        when(playerAnswerRepository.existsByPlayerIdAndQuestionId(5L, 10L)).thenReturn(true);
+
+        List<AnswerResultDTO> results = playerService.finalizeUnansweredPlayers(session, question);
+
+        assertThat(results).isEmpty();
+        verify(playerRepository, never()).save(any(Player.class));
     }
 
 

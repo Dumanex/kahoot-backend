@@ -84,6 +84,8 @@ public class GameService {
         validateHost(session, userId);
         validateStatus(session, GameSessionStatus.IN_PROGRESS, "Game must be IN_PROGRESS to advance question");
 
+        gameMessageService.finalizeUnansweredPlayers(pinCode, session);
+
         int totalQuestion = questionRepository.countByQuizId(session.getQuiz().getId());
         int nextIndex = session.getCurrentQuestionIndex() + 1;
 

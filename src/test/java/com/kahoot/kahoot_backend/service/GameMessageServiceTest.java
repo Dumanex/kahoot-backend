@@ -196,9 +196,32 @@ public class GameMessageServiceTest {
 
         gameMessageService.handleNextQuestion(PIN);
 
+        verify(playerService).finalizeUnansweredPlayers(inProgressSession, question);
         verify(gameSessionRepository).save(argThat(s -> s.getCurrentQuestionIndex() == 1));
         verify(messagingTemplate).convertAndSend(eq("/topic/game/" + PIN + "/question"), any(Object.class));
         verify(messagingTemplate, never()).convertAndSend(eq("/topic/game/" + PIN + "/ended"), any(Object.class));
+    }
+
+    @Test
+    void handleNextQuestion_playersDidNotAnswer_shouldBroadcastResultForEachOfThem() {
+        GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
+        AnswerResultDTO unansweredResult = AnswerResultDTO.builder()
+                .playerId(5L)
+                .nickname("p1")
+                .isCorrect(false)
+                .chosenAnswerId(null)
+                .pointsEarned(0)
+                .streak(0)
+                .build();
+
+        when(gameSessionRepository.findByPinCode(PIN)).thenReturn(Optional.of(inProgressSession));
+        when(questionRepository.countByQuizId(50L)).thenReturn(5);
+        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question, question));
+        when(playerService.finalizeUnansweredPlayers(inProgressSession, question)).thenReturn(List.of(unansweredResult));
+
+        gameMessageService.handleNextQuestion(PIN);
+
+        verify(messagingTemplate).convertAndSend(eq("/topic/game/" + PIN + "/answer-result"), eq(unansweredResult));
     }
 
     @Test

@@ -102,6 +102,8 @@ public class GameMessageService {
             return;
         }
 
+        finalizeUnansweredPlayers(pinCode, session);
+
         int totalQuestions = questionRepository.countByQuizId(session.getQuiz().getId());
         int nextIndex = session.getCurrentQuestionIndex() + 1;
 
@@ -115,6 +117,18 @@ public class GameMessageService {
 
         // Broadcast next question
         broadcastCurrentQuestion(pinCode, session);
+    }
+
+    public void finalizeUnansweredPlayers(String pinCode, GameSession session) {
+        Question currentQuestion = getCurrentQuestion(session);
+
+        if (currentQuestion == null) {
+            return;
+        }
+
+        List<AnswerResultDTO> results = playerService.finalizeUnansweredPlayers(session, currentQuestion);
+
+        results.forEach(result -> messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/answer-result", result));
     }
 
     // ================== HOST: END GAME ==================

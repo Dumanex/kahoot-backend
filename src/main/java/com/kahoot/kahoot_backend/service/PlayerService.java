@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -117,11 +118,44 @@ public class PlayerService {
                 .playerId(player.getId())
                 .nickname(player.getNickname())
                 .isCorrect(isCorrect)
+                .chosenAnswerId(request.getAnswerId())
                 .pointsEarned(pointsEarned)
                 .totalScore(player.getScore())
                 .streak(newStreak)
                 .correctAnswer(mapToAnswerDTO(correctAnswer))
                 .build();
+    }
+
+    // ======================== FINALIZE UNANSWERED PLAYERS ========================
+
+    @Transactional
+    public List<AnswerResultDTO> finalizeUnansweredPlayers(GameSession session, Question currentQuestion) {
+        Answer correctAnswer = currentQuestion.getAnswers()
+                .stream()
+                .filter(Answer::getIsCorrect)
+                .findFirst()
+                .orElse(null);
+
+        List<Player> players = playerRepository.findByGameSessionId(session.getId());
+
+        return players.stream()
+                .filter(player -> !playerAnswerRepository.existsByPlayerIdAndQuestionId(player.getId(), currentQuestion.getId()))
+                .map(player -> {
+                    player.setStreak(0);
+                    playerRepository.save(player);
+
+                    return AnswerResultDTO.builder()
+                            .playerId(player.getId())
+                            .nickname(player.getNickname())
+                            .isCorrect(false)
+                            .chosenAnswerId(null)
+                            .pointsEarned(0)
+                            .totalScore(player.getScore())
+                            .streak(0)
+                            .correctAnswer(correctAnswer != null ? mapToAnswerDTO(correctAnswer) : null)
+                            .build();
+                })
+                .collect(Collectors.toList());
     }
 
     // ======================== QUERY METHODS ========================
