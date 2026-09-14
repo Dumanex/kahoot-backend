@@ -1,5 +1,6 @@
 package com.kahoot.kahoot_backend.DTOs.game;
 
+import com.kahoot.kahoot_backend.enums.GameSessionVisibility;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -13,4 +14,6 @@ import lombok.NoArgsConstructor;
 public class GameCreateRequest {
     @NotNull(message = "Quiz ID is required")
     private Long quizId;
+
+    private GameSessionVisibility visibility;
 }

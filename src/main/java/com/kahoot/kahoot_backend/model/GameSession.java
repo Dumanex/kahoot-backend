@@ -1,6 +1,7 @@
 package com.kahoot.kahoot_backend.model;
 
 import com.kahoot.kahoot_backend.enums.GameSessionStatus;
+import com.kahoot.kahoot_backend.enums.GameSessionVisibility;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -33,6 +34,10 @@ public class GameSession {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private GameSessionStatus status = GameSessionStatus.WAITING;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "visibility", nullable = false)
+    private GameSessionVisibility visibility = GameSessionVisibility.PRIVATE;
 
     @Column(name = "current_question_index")
     private Integer currentQuestionIndex = 0;

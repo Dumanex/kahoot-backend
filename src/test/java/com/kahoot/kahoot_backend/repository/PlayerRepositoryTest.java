@@ -1,6 +1,7 @@
 package com.kahoot.kahoot_backend.repository;
 
 import com.kahoot.kahoot_backend.enums.GameSessionStatus;
+import com.kahoot.kahoot_backend.enums.GameSessionVisibility;
 import com.kahoot.kahoot_backend.model.GameSession;
 import com.kahoot.kahoot_backend.model.Player;
 import com.kahoot.kahoot_backend.model.Quiz;
@@ -44,6 +45,7 @@ public class PlayerRepositoryTest {
                 .quiz(quiz)
                 .pinCode("123456")
                 .status(GameSessionStatus.WAITING)
+                .visibility(GameSessionVisibility.PRIVATE)
                 .currentQuestionIndex(0)
                 .build();
 

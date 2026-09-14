@@ -1,9 +1,6 @@
 package com.kahoot.kahoot_backend.controller;
 
-import com.kahoot.kahoot_backend.DTOs.game.GameCreateRequest;
-import com.kahoot.kahoot_backend.DTOs.game.GameSessionResponse;
-import com.kahoot.kahoot_backend.DTOs.game.PlayerJoinRequest;
-import com.kahoot.kahoot_backend.DTOs.game.PlayerResponse;
+import com.kahoot.kahoot_backend.DTOs.game.*;
 import com.kahoot.kahoot_backend.config.SecurityConfig;
 import com.kahoot.kahoot_backend.config.WithMockUserPrincipal;
 import com.kahoot.kahoot_backend.enums.GameSessionStatus;
@@ -15,14 +12,18 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import java.util.List;
+
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -159,5 +160,51 @@ public class GameControllerTest {
                 .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.nickname").value("player1"));
+    }
+
+    @Test
+    void listPublicGames_noAuth_shouldReturn200() throws Exception {
+        PublicGameSummaryResponse summary = PublicGameSummaryResponse.builder()
+                .pinCode("123456")
+                .quizTitle("Quiz")
+                .hostName("host")
+                .totalQuestions(5)
+                .playerCount(2)
+                .build();
+
+        when(gameService.listPublicSessions(isNull(), any())).thenReturn(new PageImpl<>(List.of(summary)));
+
+        mockMvc.perform(get("/api/games/public"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].pinCode").value("123456"));
+    }
+
+    @Test
+    void listPublicGames_withQueryParam_shouldPassQueryToServiceAndReturnList() throws Exception {
+        PublicGameSummaryResponse summary = PublicGameSummaryResponse.builder()
+                .pinCode("654321")
+                .quizTitle("Science Quiz")
+                .hostName("host")
+                .totalQuestions(5)
+                .playerCount(0)
+                .build();
+
+        when(gameService.listPublicSessions(eq("science"), any())).thenReturn(new PageImpl<>(List.of(summary)));
+
+        mockMvc.perform(get("/api/games/public").param("q", "science"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].pinCode").value("654321"));
+
+        verify(gameService).listPublicSessions(eq("science"), any());
+    }
+
+    @Test
+    void listPublicGames_withoutQueryParam_shouldCallServiceWithNullQuery() throws Exception {
+        when(gameService.listPublicSessions(isNull(), any())).thenReturn(Page.empty());
+
+        mockMvc.perform(get("/api/games/public"))
+                .andExpect(status().isOk());
+
+        verify(gameService).listPublicSessions(isNull(), any());
     }
 }

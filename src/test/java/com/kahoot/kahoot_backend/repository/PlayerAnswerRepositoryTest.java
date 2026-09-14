@@ -1,6 +1,7 @@
 package com.kahoot.kahoot_backend.repository;
 
 import com.kahoot.kahoot_backend.enums.GameSessionStatus;
+import com.kahoot.kahoot_backend.enums.GameSessionVisibility;
 import com.kahoot.kahoot_backend.enums.QuestionType;
 import com.kahoot.kahoot_backend.model.*;
 import org.junit.jupiter.api.Test;
@@ -53,6 +54,7 @@ public class PlayerAnswerRepositoryTest {
                 .quiz(quiz)
                 .pinCode("123456")
                 .status(GameSessionStatus.IN_PROGRESS)
+                .visibility(GameSessionVisibility.PRIVATE)
                 .currentQuestionIndex(0)
                 .build();
         entityManager.persistAndFlush(session);

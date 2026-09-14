@@ -10,5 +10,7 @@ import java.util.List;
 public interface PlayerRepository extends JpaRepository<Player, Long> {
     List<Player> findByGameSessionId(Long gameSessionId);
 
+    int countByGameSessionId(Long gameSessionId);
+
     boolean existsByGameSessionIdAndNickname(Long sessionId, String nickname);
 }

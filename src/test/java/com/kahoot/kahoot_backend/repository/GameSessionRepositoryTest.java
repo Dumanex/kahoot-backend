@@ -1,6 +1,7 @@
 package com.kahoot.kahoot_backend.repository;
 
 import com.kahoot.kahoot_backend.enums.GameSessionStatus;
+import com.kahoot.kahoot_backend.enums.GameSessionVisibility;
 import com.kahoot.kahoot_backend.model.GameSession;
 import com.kahoot.kahoot_backend.model.Quiz;
 import com.kahoot.kahoot_backend.model.User;
@@ -9,6 +10,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.util.Optional;
@@ -25,29 +28,42 @@ public class GameSessionRepositoryTest {
     @Autowired
     private GameSessionRepository gameSessionRepository;
 
-    private Quiz persistQuiz() {
+    private Quiz persistQuiz(String title, String username) {
         User creator = User.builder()
-                .username("creator")
-                .email("creator@test.com")
+                .username(username)
+                .email(username + "@test.com")
                 .passwordHash("hashedPassword")
                 .build();
         entityManager.persistAndFlush(creator);
 
         Quiz quiz = Quiz.builder()
-                .title("Quiz")
+                .title(title)
                 .creator(creator)
                 .build();
 
         return entityManager.persistAndFlush(quiz);
     }
 
+    private GameSession persistSession(Quiz quiz, String pinCode, GameSessionStatus status, GameSessionVisibility visibility) {
+        GameSession session = GameSession.builder()
+                .quiz(quiz)
+                .pinCode(pinCode)
+                .status(status)
+                .visibility(visibility)
+                .currentQuestionIndex(0)
+                .build();
+
+        return entityManager.persistAndFlush(session);
+    }
+
     @Test
     void findByPinCode_existingPin_shouldReturnGameSession() {
-        Quiz quiz = persistQuiz();
+        Quiz quiz = persistQuiz("Quiz", "creator");
         GameSession session = GameSession.builder()
                 .quiz(quiz)
                 .pinCode("123456")
                 .status(GameSessionStatus.WAITING)
+                .visibility(GameSessionVisibility.PRIVATE)
                 .currentQuestionIndex(0)
                 .build();
         entityManager.persistAndFlush(session);
@@ -67,11 +83,12 @@ public class GameSessionRepositoryTest {
 
     @Test
     void existsByPinCode_existingPin_shouldReturnTrue() {
-        Quiz quiz = persistQuiz();
+        Quiz quiz = persistQuiz("Quiz", "creator");
         GameSession session = GameSession.builder()
                 .quiz(quiz)
                 .pinCode("654321")
                 .status(GameSessionStatus.WAITING)
+                .visibility(GameSessionVisibility.PRIVATE)
                 .currentQuestionIndex(0)
                 .build();
         entityManager.persistAndFlush(session);
@@ -86,5 +103,55 @@ public class GameSessionRepositoryTest {
         boolean result = gameSessionRepository.existsByPinCode("000000");
 
         assertThat(result).isFalse();
+    }
+
+    @Test
+    void searchPublicSessions_waitingAndPublicNoQuery_shouldReturnSession() {
+        Quiz quiz = persistQuiz("Quiz", "creator1");
+        persistSession(quiz, "111111", GameSessionStatus.WAITING, GameSessionVisibility.PUBLIC);
+
+        Page<GameSession> result = gameSessionRepository.searchPublicSessions(
+                GameSessionStatus.WAITING, GameSessionVisibility.PUBLIC, null, PageRequest.of(0, 20));
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getPinCode()).isEqualTo("111111");
+    }
+
+    @Test
+    void searchPublicSessions_waitingAndPrivateNoQuery_shouldNotReturnSession() {
+        Quiz quiz = persistQuiz("Quiz", "creator2");
+        persistSession(quiz, "222222", GameSessionStatus.WAITING, GameSessionVisibility.PRIVATE);
+
+        Page<GameSession> result = gameSessionRepository.searchPublicSessions(
+                GameSessionStatus.WAITING, GameSessionVisibility.PUBLIC, null, PageRequest.of(0, 20));
+
+        assertThat(result.getContent()).isEmpty();
+    }
+
+    @Test
+    void searchPublicSessions_queryMatchesQuizTitle_shouldReturnSession() {
+        Quiz quiz = persistQuiz("Science Quiz", "creator3");
+        persistSession(quiz, "333333", GameSessionStatus.WAITING, GameSessionVisibility.PUBLIC);
+
+        Page<GameSession> result = gameSessionRepository.searchPublicSessions(
+                GameSessionStatus.WAITING, GameSessionVisibility.PUBLIC, "quiz", PageRequest.of(0, 20));
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getPinCode()).isEqualTo("333333");
+    }
+
+    @Test
+    void searchPublicSessions_queryMatchesPartialPinCode_shouldReturnMatchingSessions() {
+        Quiz quiz = persistQuiz("Quiz", "creator4");
+        persistSession(quiz, "123456", GameSessionStatus.WAITING, GameSessionVisibility.PUBLIC);
+        persistSession(quiz, "234683", GameSessionStatus.WAITING, GameSessionVisibility.PUBLIC);
+        persistSession(quiz, "999999", GameSessionStatus.WAITING, GameSessionVisibility.PUBLIC);
+
+        Page<GameSession> result = gameSessionRepository.searchPublicSessions(
+                GameSessionStatus.WAITING, GameSessionVisibility.PUBLIC, "234", PageRequest.of(0, 20));
+
+        assertThat(result.getContent()).hasSize(2)
+                .extracting(GameSession::getPinCode)
+                .containsExactlyInAnyOrder("123456", "234683");
     }
 }

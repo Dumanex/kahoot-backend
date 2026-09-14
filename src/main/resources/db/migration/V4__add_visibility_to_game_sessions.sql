@@ -1,0 +1,2 @@
+ALTER TABLE game_sessions
+    ADD COLUMN visibility VARCHAR(20) NOT NULL DEFAULT 'PRIVATE';

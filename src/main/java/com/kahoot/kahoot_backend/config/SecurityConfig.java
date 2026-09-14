@@ -105,6 +105,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/games/{pinCode}").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/games/{pinCode}/join").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/games/public").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()

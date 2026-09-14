@@ -2,7 +2,9 @@ package com.kahoot.kahoot_backend.service;
 
 import com.kahoot.kahoot_backend.DTOs.game.GameCreateRequest;
 import com.kahoot.kahoot_backend.DTOs.game.GameSessionResponse;
+import com.kahoot.kahoot_backend.DTOs.game.PublicGameSummaryResponse;
 import com.kahoot.kahoot_backend.enums.GameSessionStatus;
+import com.kahoot.kahoot_backend.enums.GameSessionVisibility;
 import com.kahoot.kahoot_backend.exception.ResourceNotFoundException;
 import com.kahoot.kahoot_backend.model.GameSession;
 import com.kahoot.kahoot_backend.model.Quiz;
@@ -17,7 +19,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -231,5 +238,73 @@ public class GameServiceTest {
 
         assertThatThrownBy(() -> gameService.getSessionByPin("000000"))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // Create Session - visibility
+    @Test
+    void createSession_noVisibilityInRequest_shouldDefaultToPrivate() {
+        when(quizRepository.findById(50L)).thenReturn(Optional.of(quiz));
+        when(questionRepository.countByQuizId(50L)).thenReturn(5);
+        when(gameSessionRepository.existsByPinCode(anyString())).thenReturn(false);
+        when(gameSessionRepository.save(any(GameSession.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        GameSessionResponse response = gameService.createSession(HOST_ID, GameCreateRequest.builder().quizId(50L).build());
+
+        assertThat(response.getVisibility()).isEqualTo(GameSessionVisibility.PRIVATE);
+    }
+
+    @Test
+    void createSession_visibilityPublicInRequest_shouldCreatePublicSession() {
+        when(quizRepository.findById(50L)).thenReturn(Optional.of(quiz));
+        when(questionRepository.countByQuizId(50L)).thenReturn(5);
+        when(gameSessionRepository.existsByPinCode(anyString())).thenReturn(false);
+        when(gameSessionRepository.save(any(GameSession.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        GameSessionResponse response = gameService.createSession(HOST_ID,
+                GameCreateRequest.builder().quizId(50L).visibility(GameSessionVisibility.PUBLIC).build());
+
+        assertThat(response.getVisibility()).isEqualTo(GameSessionVisibility.PUBLIC);
+    }
+
+    // List Public Sessions
+    @Test
+    void listPublicSessions_shouldMapSessionsToSummaryResponses() {
+        GameSession session = GameSession.builder()
+                .id(200L)
+                .quiz(quiz)
+                .pinCode("123456")
+                .status(GameSessionStatus.WAITING)
+                .visibility(GameSessionVisibility.PUBLIC)
+                .currentQuestionIndex(0)
+                .build();
+
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<GameSession> page = new PageImpl<>(List.of(session));
+
+        when(gameSessionRepository.searchPublicSessions(GameSessionStatus.WAITING, GameSessionVisibility.PUBLIC, null, pageable))
+                .thenReturn(page);
+        when(questionRepository.countByQuizId(50L)).thenReturn(5);
+        when(playerRepository.countByGameSessionId(200L)).thenReturn(3);
+
+        Page<PublicGameSummaryResponse> result = gameService.listPublicSessions(null, pageable);
+
+        assertThat(result.getContent()).hasSize(1);
+        PublicGameSummaryResponse summary = result.getContent().get(0);
+        assertThat(summary.getPinCode()).isEqualTo("123456");
+        assertThat(summary.getQuizTitle()).isEqualTo("Quiz");
+        assertThat(summary.getHostName()).isEqualTo("host");
+        assertThat(summary.getTotalQuestions()).isEqualTo(5);
+        assertThat(summary.getPlayerCount()).isEqualTo(3);
+    }
+
+    @Test
+    void listPublicSessions_blankQuery_shouldPassNullToRepository() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(gameSessionRepository.searchPublicSessions(GameSessionStatus.WAITING, GameSessionVisibility.PUBLIC, null, pageable))
+                .thenReturn(Page.empty());
+
+        gameService.listPublicSessions("   ", pageable);
+
+        verify(gameSessionRepository).searchPublicSessions(GameSessionStatus.WAITING, GameSessionVisibility.PUBLIC, null, pageable);
     }
 }

@@ -1,7 +1,5 @@
 package com.kahoot.kahoot_backend.DTOs.game;
 
-import com.kahoot.kahoot_backend.enums.GameSessionStatus;
-import com.kahoot.kahoot_backend.enums.GameSessionVisibility;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -13,22 +11,11 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class GameSessionResponse {
-    private Long id;
-
+public class PublicGameSummaryResponse {
     private String pinCode;
-
-    private GameSessionStatus status;
-
-    private GameSessionVisibility visibility;
-
-    private Long quizId;
-
     private String quizTitle;
-
-    private Integer currentQuestionIndex;
-
+    private String hostName;
     private Integer totalQuestions;
-
+    private Integer playerCount;
     private LocalDateTime createdAt;
 }

@@ -1,14 +1,15 @@
 package com.kahoot.kahoot_backend.controller;
 
-import com.kahoot.kahoot_backend.DTOs.game.GameCreateRequest;
-import com.kahoot.kahoot_backend.DTOs.game.GameSessionResponse;
-import com.kahoot.kahoot_backend.DTOs.game.PlayerJoinRequest;
-import com.kahoot.kahoot_backend.DTOs.game.PlayerResponse;
+import com.kahoot.kahoot_backend.DTOs.game.*;
 import com.kahoot.kahoot_backend.config.UserPrincipal;
 import com.kahoot.kahoot_backend.service.GameService;
 import com.kahoot.kahoot_backend.service.PlayerService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -59,6 +60,15 @@ public class GameController {
     }
 
     // ========================= PUBLIC ENDPOINTS (no JWT) =========================
+
+    @GetMapping("/api/games/public")
+    public ResponseEntity<Page<PublicGameSummaryResponse>> listPublicGames(
+            @RequestParam(required = false) String q,
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        Page<PublicGameSummaryResponse> games = gameService.listPublicSessions(q, pageable);
+
+        return ResponseEntity.ok(games);
+    }
 
     @GetMapping("/api/games/{pinCode}")
     public ResponseEntity<GameSessionResponse> getGame(@PathVariable String pinCode) {

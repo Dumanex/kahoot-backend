@@ -2,7 +2,9 @@ package com.kahoot.kahoot_backend.service;
 
 import com.kahoot.kahoot_backend.DTOs.game.GameCreateRequest;
 import com.kahoot.kahoot_backend.DTOs.game.GameSessionResponse;
+import com.kahoot.kahoot_backend.DTOs.game.PublicGameSummaryResponse;
 import com.kahoot.kahoot_backend.enums.GameSessionStatus;
+import com.kahoot.kahoot_backend.enums.GameSessionVisibility;
 import com.kahoot.kahoot_backend.exception.ResourceNotFoundException;
 import com.kahoot.kahoot_backend.model.GameSession;
 import com.kahoot.kahoot_backend.model.Quiz;
@@ -12,6 +14,8 @@ import com.kahoot.kahoot_backend.repository.QuestionRepository;
 import com.kahoot.kahoot_backend.repository.QuizRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -46,10 +50,13 @@ public class GameService {
 
         int totalQuestions = questionRepository.countByQuizId(quiz.getId());
 
+        GameSessionVisibility visibility = request.getVisibility() != null ? request.getVisibility() : GameSessionVisibility.PRIVATE;
+
         GameSession session = GameSession.builder()
                 .quiz(quiz)
                 .pinCode(pinCode)
                 .status(GameSessionStatus.WAITING)
+                .visibility(visibility)
                 .currentQuestionIndex(0)
                 .createdAt(LocalDateTime.now())
                 .build();
@@ -126,6 +133,14 @@ public class GameService {
         return mapToSessionResponse(session, totalQuestions);
     }
 
+    public Page<PublicGameSummaryResponse> listPublicSessions(String q, Pageable pageable) {
+        String search = (q == null || q.isBlank()) ? null : q.trim();
+
+        Page<GameSession> sessions = gameSessionRepository.searchPublicSessions(GameSessionStatus.WAITING, GameSessionVisibility.PUBLIC, search, pageable);
+
+        return sessions.map(this::mapToPublicSummary);
+    }
+
     // ========================= HELPERS =========================
 
     private String generateUniquePin() {
@@ -145,10 +160,25 @@ public class GameService {
                 .id(session.getId())
                 .pinCode(session.getPinCode())
                 .status(session.getStatus())
+                .visibility(session.getVisibility())
                 .quizId(session.getQuiz().getId())
                 .quizTitle(session.getQuiz().getTitle())
                 .currentQuestionIndex(session.getCurrentQuestionIndex())
                 .totalQuestions(totalQuestions)
+                .createdAt(session.getCreatedAt())
+                .build();
+    }
+
+    private PublicGameSummaryResponse mapToPublicSummary(GameSession session) {
+        int totalQuestions = questionRepository.countByQuizId(session.getQuiz().getId());
+        int playerCount = playerRepository.countByGameSessionId(session.getId());
+
+        return PublicGameSummaryResponse.builder()
+                .pinCode(session.getPinCode())
+                .quizTitle(session.getQuiz().getTitle())
+                .hostName(session.getQuiz().getCreator().getUsername())
+                .totalQuestions(totalQuestions)
+                .playerCount(playerCount)
                 .createdAt(session.getCreatedAt())
                 .build();
     }
