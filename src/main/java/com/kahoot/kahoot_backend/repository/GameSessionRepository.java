@@ -20,9 +20,10 @@ public interface GameSessionRepository extends JpaRepository<GameSession, Long> 
 
     @Query("SELECT gs FROM GameSession gs JOIN gs.quiz q JOIN q.creator u " +
             "WHERE gs.status = :status AND gs.visibility = :visibility " +
-            "AND (:q IS NULL OR LOWER(q.title) LIKE LOWER(CONCAT('%', :q, '%')) " +
-            "OR LOWER(u.username) LIKE LOWER(CONCAT('%', :q, '%')) " +
-            "OR gs.pinCode LIKE CONCAT('%', :q, '%'))")
+            "AND (CAST(:q AS string) IS NULL " +
+            "OR LOWER(q.title) LIKE LOWER(CONCAT('%', CAST(:q AS string), '%')) " +
+            "OR LOWER(u.username) LIKE LOWER(CONCAT('%', CAST(:q AS string), '%')) " +
+            "OR gs.pinCode LIKE CONCAT('%', CAST(:q AS string), '%'))")
     Page<GameSession> searchPublicSessions(@Param("status") GameSessionStatus status,
                                            @Param("visibility")GameSessionVisibility visibility,
                                            @Param("q") String q,
