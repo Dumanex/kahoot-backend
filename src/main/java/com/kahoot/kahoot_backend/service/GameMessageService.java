@@ -119,6 +119,7 @@ public class GameMessageService {
         broadcastCurrentQuestion(pinCode, session);
     }
 
+    @Transactional
     public void handleFinalizeUnanswered(String pinCode) {
         GameSession session = getSessionOrThrow(pinCode);
 
