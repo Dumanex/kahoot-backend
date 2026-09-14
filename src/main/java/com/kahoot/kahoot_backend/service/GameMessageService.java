@@ -119,6 +119,17 @@ public class GameMessageService {
         broadcastCurrentQuestion(pinCode, session);
     }
 
+    public void handleFinalizeUnanswered(String pinCode) {
+        GameSession session = getSessionOrThrow(pinCode);
+
+        if (session.getStatus() != GameSessionStatus.IN_PROGRESS) {
+            sendError(pinCode, "Game is not IN PROGRESS");
+            return;
+        }
+
+        finalizeUnansweredPlayers(pinCode, session);
+    }
+
     public void finalizeUnansweredPlayers(String pinCode, GameSession session) {
         Question currentQuestion = getCurrentQuestion(session);
 

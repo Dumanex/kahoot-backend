@@ -40,4 +40,9 @@ public class GameWebSocketController {
     public void endGame(@DestinationVariable String pinCode) {
         gameMessageService.handleEndGame(pinCode);
     }
+
+    @MessageMapping("/game/{pinCode}/finalize")
+    public void finalizeUnansweredPlayers(@DestinationVariable String pinCode) {
+        gameMessageService.handleFinalizeUnanswered(pinCode);
+    }
 }

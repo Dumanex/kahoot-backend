@@ -249,6 +249,41 @@ public class GameMessageServiceTest {
         verify(gameSessionRepository, never()).save(any());
     }
 
+    // Handle Finalize Unanswered
+    @Test
+    void handleFinalizeUnanswered_inProgress_shouldBroadcastResultsWithoutAdvancing() {
+        GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
+        AnswerResultDTO unansweredResult = AnswerResultDTO.builder()
+                .playerId(5L)
+                .nickname("p1")
+                .isCorrect(false)
+                .chosenAnswerId(null)
+                .pointsEarned(0)
+                .streak(0)
+                .build();
+
+        when(gameSessionRepository.findByPinCode(PIN)).thenReturn(Optional.of(inProgressSession));
+        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question));
+        when(playerService.finalizeUnansweredPlayers(inProgressSession, question)).thenReturn(List.of(unansweredResult));
+
+        gameMessageService.handleFinalizeUnanswered(PIN);
+
+        verify(messagingTemplate).convertAndSend(eq("/topic/game/" + PIN + "/answer-result"), eq(unansweredResult));
+        verify(gameSessionRepository, never()).save(any());
+        verify(messagingTemplate, never()).convertAndSend(eq("/topic/game/" + PIN + "/question"), any(Object.class));
+    }
+
+    @Test
+    void handleFinalizeUnanswered_notInProgress_shouldSendError() {
+        GameSession waitingSession = session(GameSessionStatus.WAITING, 0);
+        when(gameSessionRepository.findByPinCode(PIN)).thenReturn(Optional.of(waitingSession));
+
+        gameMessageService.handleFinalizeUnanswered(PIN);
+
+        verify(messagingTemplate).convertAndSend(eq("/topic/game/" + PIN + "/error"), any(Object.class));
+        verify(playerService, never()).finalizeUnansweredPlayers(any(), any());
+    }
+
     // Handle End Game
     @Test
     void handleEndGame_fromInProgress_shouldCompleteAndBroadcastFinalResults() {
