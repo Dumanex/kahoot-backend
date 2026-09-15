@@ -7,6 +7,7 @@ import com.kahoot.kahoot_backend.service.PlayerService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
@@ -64,8 +65,9 @@ public class GameController {
     @GetMapping("/api/games/public")
     public ResponseEntity<Page<PublicGameSummaryResponse>> listPublicGames(
             @RequestParam(required = false) String q,
-            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
-        Page<PublicGameSummaryResponse> games = gameService.listPublicSessions(q, pageable);
+            @PageableDefault(size = 20) Pageable pageable) {
+        Pageable sortedPageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<PublicGameSummaryResponse> games = gameService.listPublicSessions(q, sortedPageable);
 
         return ResponseEntity.ok(games);
     }

@@ -8,6 +8,8 @@ import com.kahoot.kahoot_backend.repository.UserRepository;
 import com.kahoot.kahoot_backend.service.GameService;
 import com.kahoot.kahoot_backend.service.JwtService;
 import com.kahoot.kahoot_backend.service.PlayerService;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.MalformedJwtException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -206,5 +208,26 @@ public class GameControllerTest {
                 .andExpect(status().isOk());
 
         verify(gameService).listPublicSessions(isNull(), any());
+    }
+
+    @Test
+    void getGame_withInvalidToken_shouldStillReturn200() throws Exception {
+        when(jwtService.extractUsername(anyString())).thenThrow(new MalformedJwtException("bad token"));
+        when(gameService.getSessionByPin("123456")).thenReturn(session());
+
+        mockMvc.perform(get("/api/games/123456")
+                .header("Authorization", "Bearer garbage-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pinCode").value("123456"));
+    }
+
+    @Test
+    void listPublicGames_withExpiredToken_shouldStillReturn200() throws Exception {
+        when(jwtService.extractUsername(anyString())).thenThrow(new ExpiredJwtException(null, null, "JWT expired"));
+        when(gameService.listPublicSessions(isNull(), any())).thenReturn(Page.empty());
+
+        mockMvc.perform(get("/api/games/public")
+                        .header("Authorization", "Bearer expired-token"))
+                .andExpect(status().isOk());
     }
 }
