@@ -14,6 +14,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AnswerCreateRequest {
+    private Long id;
+
     @NotBlank(message = "Answer text is required")
     private String answerText;
 

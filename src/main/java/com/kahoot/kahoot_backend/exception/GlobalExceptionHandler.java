@@ -84,6 +84,8 @@ public class GlobalExceptionHandler {
                 userMessage = "You have already answered this question";
             } else if (message.contains("uk_game_session_nickname")) {
                 userMessage = "Nickname is already taken in this game";
+            } else if (message.contains("player_answers_answer_id_fkey") || message.contains("answer_id")) {
+                userMessage = "Cannot delete an answer that has already been chosen by a player";
             }
         }
 

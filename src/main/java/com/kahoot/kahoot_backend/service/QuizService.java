@@ -17,7 +17,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -161,21 +161,43 @@ public class QuizService {
         final Question questionToUpdate = question;
 
         List<Answer> existingAnswers = questionToUpdate.getAnswers();
-        existingAnswers.clear();
 
-        List<Answer> newAnswers = request.getAnswers()
-                .stream()
-                .map(answerReq -> Answer.builder()
+        Map<Long, Answer> existingById = existingAnswers.stream()
+                .filter(a -> a.getId() != null)
+                .collect(Collectors.toMap(Answer::getId, a -> a));
+
+        Set<Long> keepIds = request.getAnswers().stream()
+                .map(AnswerCreateRequest::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        existingAnswers.removeIf(a -> !keepIds.contains(a.getId()));
+
+        List<Answer> newAnswers = new ArrayList<>();
+        for (AnswerCreateRequest answerReq : request.getAnswers()) {
+            if (answerReq.getId() != null && existingById.containsKey(answerReq.getId())) {
+                Answer existing = existingById.get(answerReq.getId());
+
+                existing.setAnswerText(answerReq.getAnswerText());
+                existing.setIsCorrect(answerReq.getIsCorrect());
+                existing.setOrderIndex(answerReq.getOrderIndex());
+                existing.setSymbol(answerReq.getSymbol());
+                existing.setColor(answerReq.getColor());
+                newAnswers.add(existing);
+            } else {
+                Answer created = Answer.builder()
                         .question(questionToUpdate)
                         .answerText(answerReq.getAnswerText())
                         .isCorrect(answerReq.getIsCorrect())
                         .orderIndex(answerReq.getOrderIndex())
                         .symbol(answerReq.getSymbol())
                         .color(answerReq.getColor())
-                        .build())
-                .collect(Collectors.toList());
+                        .build();
 
-        existingAnswers.addAll(newAnswers);
+                existingAnswers.add(created);
+                newAnswers.add(created);
+            }
+        }
         question = questionRepository.save(questionToUpdate);
 
         return mapToQuestionResponseWithAnswers(question, newAnswers);
