@@ -100,6 +100,7 @@ public class QuestionControllerTest {
         QuestionCreateRequest request = QuestionCreateRequest.builder()
                 .questionType(QuestionType.MULTIPLE_CHOICE)
                 .questionText("Question")
+                .timeLimitSeconds(30)
                 .orderIndex(0)
                 .answers(answers())
                 .build();
@@ -134,6 +135,7 @@ public class QuestionControllerTest {
         QuestionUpdateRequest request = QuestionUpdateRequest.builder()
                 .questionType(QuestionType.MULTIPLE_CHOICE)
                 .questionText("Updated Question")
+                .timeLimitSeconds(30)
                 .orderIndex(0)
                 .answers(answers())
                 .build();

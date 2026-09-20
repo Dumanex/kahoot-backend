@@ -1,6 +1,7 @@
 package com.kahoot.kahoot_backend.DTOs.quiz;
 
 import com.kahoot.kahoot_backend.enums.QuestionType;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -27,6 +28,7 @@ public class QuestionUpdateRequest {
 
     private String audioUrl;
 
+    @NotNull(message = "Time limit is required")
     @Positive(message = "Time limit must be positive")
     private Integer timeLimitSeconds;
 
@@ -35,5 +37,6 @@ public class QuestionUpdateRequest {
 
     @NotNull(message = "Answers are required")
     @Size(min = 2, max = 4, message = "Must have 2-4 answers")
+    @Valid
     private List<AnswerCreateRequest> answers;
 }

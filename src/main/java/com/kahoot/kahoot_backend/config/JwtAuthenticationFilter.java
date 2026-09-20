@@ -16,7 +16,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.time.LocalDateTime;
 
 @Component
 @RequiredArgsConstructor
@@ -58,8 +57,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                 }
             }
-        } catch (io.jsonwebtoken.JwtException e) {
-
+        } catch (io.jsonwebtoken.JwtException | IllegalArgumentException e) {
+            // Invalid or empty token: continue unauthenticated
         }
 
         filterChain.doFilter(request, response);

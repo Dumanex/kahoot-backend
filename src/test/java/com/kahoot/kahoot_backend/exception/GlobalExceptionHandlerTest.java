@@ -11,8 +11,8 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.security.access.AccessDeniedException;
 
-import java.nio.file.AccessDeniedException;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -173,6 +173,6 @@ public class GlobalExceptionHandlerTest {
         ResponseEntity<ErrorResponse> response = handler.handleGlobalException(ex, request);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
-        assertThat(response.getBody().getMessage()).isEqualTo("An unexpected error occurred: Unexpected failure");
+        assertThat(response.getBody().getMessage()).isEqualTo("An unexpected error occurred");
     }
 }
