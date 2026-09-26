@@ -3,6 +3,7 @@ package com.kahoot.kahoot_backend.repository;
 import com.kahoot.kahoot_backend.enums.GameSessionStatus;
 import com.kahoot.kahoot_backend.enums.GameSessionVisibility;
 import com.kahoot.kahoot_backend.model.GameSession;
+import com.kahoot.kahoot_backend.model.Player;
 import com.kahoot.kahoot_backend.model.Quiz;
 import com.kahoot.kahoot_backend.model.User;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -54,6 +56,30 @@ public class GameSessionRepositoryTest {
                 .build();
 
         return entityManager.persistAndFlush(session);
+    }
+
+    @Test
+    void deleteByStatusAndCreatedAtBefore_shouldDeleteOnlyOldWaitingSessionsWithTheirPlayers() {
+        Quiz quiz = persistQuiz("Quiz", "creator");
+        GameSession oldWaiting = persistSession(quiz, "111111", GameSessionStatus.WAITING, GameSessionVisibility.PUBLIC);
+        GameSession newWaiting = persistSession(quiz, "222222", GameSessionStatus.WAITING, GameSessionVisibility.PUBLIC);
+        GameSession oldInProgress = persistSession(quiz, "333333", GameSessionStatus.IN_PROGRESS, GameSessionVisibility.PUBLIC);
+
+        // createdAt is set by @PrePersist, so age the sessions after persisting
+        oldWaiting.setCreatedAt(LocalDateTime.now().minusHours(1));
+        oldInProgress.setCreatedAt(LocalDateTime.now().minusHours(1));
+        Player player = entityManager.persist(Player.builder().gameSession(oldWaiting).nickname("Ana").score(0).streak(0).build());
+        entityManager.flush();
+        Long playerId = player.getId();
+
+        int deleted = gameSessionRepository.deleteByStatusAndCreatedAtBefore(GameSessionStatus.WAITING, LocalDateTime.now().minusMinutes(30));
+        entityManager.clear();
+
+        assertThat(deleted).isEqualTo(1);
+        assertThat(gameSessionRepository.findById(oldWaiting.getId())).isEmpty();
+        assertThat(entityManager.find(Player.class, playerId)).isNull();
+        assertThat(gameSessionRepository.findById(newWaiting.getId())).isPresent();
+        assertThat(gameSessionRepository.findById(oldInProgress.getId())).isPresent();
     }
 
     @Test

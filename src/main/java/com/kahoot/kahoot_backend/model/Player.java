@@ -2,6 +2,8 @@ package com.kahoot.kahoot_backend.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 
 import java.time.LocalDateTime;
 
@@ -29,8 +31,10 @@ public class Player {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // Same as ON DELETE CASCADE in V1; lets the bulk session delete remove players
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "game_session_id", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
     private GameSession gameSession;
 
     @Column(name = "nickname", length = 30)
