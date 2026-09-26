@@ -92,7 +92,6 @@ public class GameMessageServiceTest {
                 .build();
     }
 
-    // Broadcast Player List (called after REST join)
     @Test
     void broadcastPlayerList_shouldSendPlayersToTopic() {
         when(gameSessionRepository.findByPinCode(PIN)).thenReturn(Optional.of(session(GameSessionStatus.WAITING, 0)));
@@ -128,7 +127,6 @@ public class GameMessageServiceTest {
         verify(messagingTemplate).convertAndSendToUser("player:5", "/queue/answer-accepted", accepted);
         verify(messagingTemplate).convertAndSend("/topic/game/" + PIN + "/answered",
                 (Object) AnsweredCountDTO.builder().answeredCount(1).totalPlayers(3).build());
-        // Nothing about the answer itself goes to everyone
         verify(messagingTemplate, never()).convertAndSend(eq("/topic/game/" + PIN + "/leaderboard"), any(Object.class));
         verify(messagingTemplate, never()).convertAndSendToUser(anyString(), eq("/queue/errors"), any(Object.class));
     }
@@ -165,7 +163,6 @@ public class GameMessageServiceTest {
         verifyNoInteractions(messagingTemplate);
     }
 
-    // Send Error To User (host commands)
     @Test
     void sendErrorToUser_host_shouldSendToHostsUsername() {
         Principal host = () -> "host";
@@ -176,7 +173,6 @@ public class GameMessageServiceTest {
                 ErrorDTO.builder().message("Game is not IN_PROGRESS").build());
     }
 
-    // Broadcast Game Started
     @Test
     void broadcastGameStarted_shouldSendStartedAndFirstQuestion() {
         GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
@@ -188,7 +184,6 @@ public class GameMessageServiceTest {
         verify(messagingTemplate).convertAndSend(eq("/topic/game/" + PIN + "/question"), any(Object.class));
     }
 
-    // Send Answer Results (after finalize)
     @Test
     void sendAnswerResults_shouldSendEachResultOnlyToItsPlayer() {
         AnswerResultDTO result5 = AnswerResultDTO.builder().playerId(5L).nickname("p1").isCorrect(true).build();
@@ -201,7 +196,6 @@ public class GameMessageServiceTest {
         verify(messagingTemplate, never()).convertAndSend(anyString(), any(Object.class));
     }
 
-    // Broadcast Final Results
     @Test
     void broadcastFinalResults_shouldSendEndedWithLeaderboard() {
         when(playerRepository.findByGameSessionId(200L)).thenReturn(List.of());
@@ -211,7 +205,6 @@ public class GameMessageServiceTest {
         verify(messagingTemplate).convertAndSend(eq("/topic/game/" + PIN + "/ended"), any(Object.class));
     }
 
-    // Inside a transaction: nothing is sent until the commit
     @Test
     void broadcast_insideTransaction_shouldSendOnlyAfterCommit() {
         when(playerRepository.findByGameSessionId(200L)).thenReturn(List.of());

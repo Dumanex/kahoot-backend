@@ -13,7 +13,6 @@ import lombok.*;
 public class RegisterRequest {
     @NotBlank(message = "Username is required")
     @Size(min = 3, max = 50, message = "Username must be 3-50 characters")
-    // No ':' so a username can never match a player's WebSocket name ("player:<id>")
     @Pattern(regexp = "^[A-Za-z0-9_.-]+$", message = "Username may contain only letters, digits, '_', '.' and '-'")
     private String username;
 

@@ -109,7 +109,6 @@ public class WebSocketAuthInterceptorTest {
                 .isInstanceOf(MessagingException.class);
     }
 
-    // Player (private /user/queue/... channel)
     private Message<byte[]> playerConnect(String playerId, String rejoinToken) {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
         accessor.addNativeHeader("playerId", playerId);

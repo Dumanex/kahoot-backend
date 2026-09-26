@@ -41,12 +41,10 @@ public class GameMessageService {
         try {
             AnswerAcceptedDTO accepted = playerService.submitAnswer(pinCode, request.getPlayerId(), request);
 
-            // Only the player learns that the answer was received; whether it's correct comes after finalize
             sendToUser(PlayerPrincipal.nameOf(request.getPlayerId()), ANSWER_ACCEPTED_QUEUE, accepted);
 
             broadcastAnsweredCount(pinCode, accepted.getQuestionId());
         } catch (SecurityException e) {
-            // Same policy as rejected host commands: log only
             log.warn("Rejected answer for game {} (player {}): {}", pinCode, request.getPlayerId(), e.getMessage());
         } catch (IllegalArgumentException | IllegalStateException | ResourceNotFoundException e) {
             sendErrorToUser(principal, e.getMessage());
@@ -54,14 +52,11 @@ public class GameMessageService {
     }
 
     public void broadcastGameStarted(String pinCode, GameSession session) {
-        // Broadcast started event
         send(TOPIC_PREFIX + pinCode + "/started", new GameStartedDTO());
 
-        // Broadcast first question
         broadcastCurrentQuestion(pinCode, session);
     }
 
-    // After finalize every player (also those who didn't answer) gets their own result privately
     public void sendAnswerResults(List<AnswerResultDTO> results) {
         results.forEach(result -> sendToUser(PlayerPrincipal.nameOf(result.getPlayerId()), ANSWER_RESULT_QUEUE, result));
     }
@@ -72,7 +67,6 @@ public class GameMessageService {
         send(TOPIC_PREFIX + pinCode + "/round-results", roundResults);
     }
 
-    // Public so the REST join endpoint can announce the new player as well
     public void broadcastPlayerList(String pinCode) {
         GameSession session = getSessionOrThrow(pinCode);
         List<Player> players = playerRepository.findByGameSessionId(session.getId());
@@ -80,7 +74,6 @@ public class GameMessageService {
         send(TOPIC_PREFIX + pinCode + "/players", GameDtoMapper.toPlayerInfos(players));
     }
 
-    // Only how many answered, not who or what, so it reveals nothing about the correct answer
     private void broadcastAnsweredCount(String pinCode, Long questionId) {
         GameSession session = getSessionOrThrow(pinCode);
 
@@ -121,7 +114,6 @@ public class GameMessageService {
 
     // ================== HELPERS ==================
 
-    // Errors go only to whoever sent the command (player or host); an anonymous sender is only logged
     public void sendErrorToUser(Principal principal, String message) {
         if (principal == null) {
             log.warn("WebSocket error for anonymous connection: {}", message);

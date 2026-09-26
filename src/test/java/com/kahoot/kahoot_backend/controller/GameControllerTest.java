@@ -155,7 +155,6 @@ public class GameControllerTest {
                 .andExpect(jsonPath("$[0].status").value("COMPLETED"));
     }
 
-    // /api/games/{pinCode} is permitAll, so "mine" must not fall through to it
     @Test
     void listMyGames_unauthenticated_shouldReturn401() throws Exception {
         mockMvc.perform(get("/api/games/mine"))

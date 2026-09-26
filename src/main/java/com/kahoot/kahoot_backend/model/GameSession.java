@@ -48,7 +48,6 @@ public class GameSession {
     @Column(name = "question_started_at")
     private LocalDateTime questionStartedAt;
 
-    // True once finalize ran for the current question (round results are final)
     @Column(name = "question_finalized", nullable = false)
     private boolean questionFinalized;
 

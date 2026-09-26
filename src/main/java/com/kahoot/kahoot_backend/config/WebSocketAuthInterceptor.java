@@ -45,8 +45,6 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
         return message;
     }
 
-    // Wrong or missing player headers are not an error: the connection stays anonymous (no private channel),
-    // so a player from a deleted or finished game can still connect and receive the public /topic messages
     private PlayerPrincipal authenticatePlayer(String playerIdHeader, String rejoinToken) {
         if (playerIdHeader == null || rejoinToken == null) {
             return null;

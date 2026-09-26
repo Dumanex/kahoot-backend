@@ -21,8 +21,6 @@ import java.util.Optional;
 public interface GameSessionRepository extends JpaRepository<GameSession, Long> {
     Optional<GameSession> findByPinCode(String pinCode);
 
-    // Row lock until the transaction ends: answers and finalize of the same game run one after another,
-    // so an answer can't slip in while finalize applies the points (and finalize can't run twice at once)
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT gs FROM GameSession gs WHERE gs.pinCode = :pinCode")
     Optional<GameSession> findByPinCodeForUpdate(@Param("pinCode") String pinCode);
@@ -35,7 +33,6 @@ public interface GameSessionRepository extends JpaRepository<GameSession, Long> 
 
     List<GameSession> findByStatusAndQuestionStartedAtBefore(GameSessionStatus status, LocalDateTime cutoff);
 
-    // Bulk delete; players are removed by ON DELETE CASCADE in the database
     @Modifying
     @Query("DELETE FROM GameSession gs WHERE gs.status = :status AND gs.createdAt < :cutoff")
     int deleteByStatusAndCreatedAtBefore(@Param("status") GameSessionStatus status,

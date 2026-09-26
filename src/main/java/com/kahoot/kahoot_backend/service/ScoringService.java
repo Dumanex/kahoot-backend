@@ -9,7 +9,7 @@ public class ScoringService {
     private static final int STREAK_BONUS = 50;
 
     /**
-     * Calculates points based on IMPLEMENTATION_PLAN.md formula:
+     * Calculates points based on formula:
      * Points = 1000(base) + 500(MAX_SPEED_BONUS) * (1 - responseTime / timeLimit) + streak * 50(STREAK_BONUS)
      *
      * @param isCorrect       whether the answer is correct

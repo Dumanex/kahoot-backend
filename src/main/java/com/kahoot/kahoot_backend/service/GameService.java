@@ -105,7 +105,6 @@ public class GameService {
         validateHost(session, userId);
         validateStatus(session, GameSessionStatus.IN_PROGRESS, "Game must be IN_PROGRESS to advance question");
 
-        // Safety net if the host skipped finalize; no round-results here, the next question follows right away
         finalizeCurrentQuestion(pinCode, session, false);
 
         int totalQuestion = questionRepository.countByQuizId(session.getQuiz().getId());
@@ -132,7 +131,6 @@ public class GameService {
         validateHost(session, userId);
         validateStatus(session, GameSessionStatus.IN_PROGRESS, "Game can only be ended from IN_PROGRESS status");
 
-        // Ending in the middle of a question still counts the answers already given
         finalizeCurrentQuestion(pinCode, session, false);
 
         session.setStatus(GameSessionStatus.COMPLETED);
@@ -145,7 +143,6 @@ public class GameService {
         return mapToSessionResponse(session, totalQuestion);
     }
 
-    // Host ends the question early (e.g. everyone answered); otherwise the server does it at the deadline
     @Transactional
     public void finalizeUnanswered(String pinCode, Long userId) {
         GameSession session = getSessionForUpdate(pinCode);
@@ -156,12 +153,10 @@ public class GameService {
         finalizeCurrentQuestion(pinCode, session, true);
     }
 
-    // Called every second by GameAutoFinalizeService, so players get their results even if the host's tab is gone
     @Transactional
     public void autoFinalizeIfExpired(String pinCode) {
         GameSession session = getSessionForUpdate(pinCode);
 
-        // Checked again under the lock: the host may have finalized, moved on or ended the game meanwhile
         if (session.getStatus() != GameSessionStatus.IN_PROGRESS || session.isQuestionFinalized() || session.getQuestionStartedAt() == null) {
             return;
         }
@@ -174,7 +169,6 @@ public class GameService {
         finalizeCurrentQuestion(pinCode, session, true);
     }
 
-    // All sessions of the logged-in host (waiting, in progress and history), newest first
     @Transactional
     public List<HostGameSummaryResponse> listHostSessions(Long userId) {
         return gameSessionRepository.findByQuizCreatorIdOrderByCreatedAtDesc(userId)
@@ -215,7 +209,6 @@ public class GameService {
             answeredCount = playerAnswerRepository.countByQuestionIdAndPlayerGameSessionId(currentQuestion.getId(), session.getId());
             questionFinalized = session.isQuestionFinalized();
 
-            // Only after finalize, so correct answers are not revealed while the question is open
             if (questionFinalized) {
                 roundResults = buildRoundResults(session, currentQuestion, players);
             }
@@ -319,8 +312,6 @@ public class GameService {
                 .build();
     }
 
-    // Points of the current question are applied only once (questionFinalized); a repeated finalize
-    // only sends round-results again. The session must be locked (getSessionForUpdate) by the caller.
     private void finalizeCurrentQuestion(String pinCode, GameSession session, boolean sendRoundResults) {
         Question question = getCurrentQuestion(session);
         if (question == null) {
@@ -330,7 +321,6 @@ public class GameService {
         if (!session.isQuestionFinalized()) {
             List<AnswerResultDTO> results = playerService.applyRoundScores(session, question);
 
-            // Also lets a client that refreshes on the round-results screen restore it via /state
             session.setQuestionFinalized(true);
             gameSessionRepository.save(session);
 
@@ -371,7 +361,6 @@ public class GameService {
                 .orElseThrow(() -> new ResourceNotFoundException("Game session not found with PIN: " + pinCode));
     }
 
-    // Same as getSessionOrThrow, but locks the row until the transaction ends (see GameSessionRepository)
     private GameSession getSessionForUpdate(String pinCode) {
         return gameSessionRepository.findByPinCodeForUpdate(pinCode)
                 .orElseThrow(() -> new ResourceNotFoundException("Game session not found with PIN: " + pinCode));

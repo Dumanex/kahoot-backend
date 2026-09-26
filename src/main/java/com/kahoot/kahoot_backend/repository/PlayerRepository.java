@@ -15,6 +15,5 @@ public interface PlayerRepository extends JpaRepository<Player, Long> {
 
     boolean existsByGameSessionIdAndNickname(Long sessionId, String nickname);
 
-    // Top scorer; on a tie the player who joined first
     Optional<Player> findFirstByGameSessionIdOrderByScoreDescIdAsc(Long gameSessionId);
 }

@@ -5,7 +5,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-// Public progress of the current question, without revealing who answered what
 @Data
 @Builder
 @NoArgsConstructor

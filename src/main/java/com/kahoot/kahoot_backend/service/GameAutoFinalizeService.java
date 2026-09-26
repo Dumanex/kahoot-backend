@@ -10,8 +10,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 
-// Finalizes a question when its time is up, so players get their results even if the host's tab
-// is closed or asleep. The host's own finalize (e.g. when everyone answered) still works earlier.
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -26,7 +24,6 @@ public class GameAutoFinalizeService {
         List<GameSession> openQuestions = gameSessionRepository.findByStatusAndQuestionFinalizedFalse(GameSessionStatus.IN_PROGRESS);
 
         for (GameSession session : openQuestions) {
-            // Each game in its own transaction, so one failing game doesn't stop the others
             try {
                 gameService.autoFinalizeIfExpired(session.getPinCode());
             } catch (RuntimeException e) {

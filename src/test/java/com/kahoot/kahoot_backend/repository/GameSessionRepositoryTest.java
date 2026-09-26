@@ -65,7 +65,6 @@ public class GameSessionRepositoryTest {
         GameSession newWaiting = persistSession(quiz, "222222", GameSessionStatus.WAITING, GameSessionVisibility.PUBLIC);
         GameSession oldInProgress = persistSession(quiz, "333333", GameSessionStatus.IN_PROGRESS, GameSessionVisibility.PUBLIC);
 
-        // createdAt is set by @PrePersist, so age the sessions after persisting
         oldWaiting.setCreatedAt(LocalDateTime.now().minusHours(1));
         oldInProgress.setCreatedAt(LocalDateTime.now().minusHours(1));
         Player player = entityManager.persist(Player.builder().gameSession(oldWaiting).nickname("Ana").score(0).streak(0).build());

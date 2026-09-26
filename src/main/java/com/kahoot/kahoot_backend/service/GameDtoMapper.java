@@ -15,7 +15,6 @@ import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.List;
 
-// Shared mapping so WebSocket broadcasts and GET /state return identical shapes
 final class GameDtoMapper {
     private GameDtoMapper() {
     }
@@ -30,7 +29,6 @@ final class GameDtoMapper {
                 .build();
     }
 
-    // Without isCorrect, safe to send to players
     static QuestionDTO toQuestionDTO(Question question, LocalDateTime questionStartedAt) {
         return QuestionDTO.builder()
                 .id(question.getId())
@@ -46,12 +44,10 @@ final class GameDtoMapper {
                 .build();
     }
 
-    // LocalDateTime.now() uses the system zone, so convert back with the same zone
     static long toEpochMillis(LocalDateTime dateTime) {
         return dateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
     }
 
-    // Same shape as /answer-result; playerAnswer == null means the player did not answer
     static AnswerResultDTO toAnswerResult(Player player, PlayerAnswer playerAnswer, Question question) {
         Answer correctAnswer = question.getAnswers().stream()
                 .filter(Answer::getIsCorrect)

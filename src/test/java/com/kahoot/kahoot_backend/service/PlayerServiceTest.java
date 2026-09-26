@@ -94,7 +94,6 @@ public class PlayerServiceTest {
                 .pinCode("123456")
                 .status(GameSessionStatus.IN_PROGRESS)
                 .currentQuestionIndex(0)
-                // 3 s ready phase + ~3 s of answering, so the measured response time is about 3000 ms
                 .questionStartedAt(LocalDateTime.now().minusSeconds(6))
                 .build();
 
@@ -191,7 +190,6 @@ public class PlayerServiceTest {
         assertThat(saved.getValue().getPointsEarned()).isEqualTo(1200);
         assertThat(saved.getValue().getResponseTimeMs()).isBetween(3000, 4000);
 
-        // Score and streak change only at finalize (applyRoundScores)
         assertThat(player.getScore()).isZero();
         assertThat(player.getStreak()).isEqualTo(2);
         verify(playerRepository, never()).save(any(Player.class));
@@ -217,7 +215,6 @@ public class PlayerServiceTest {
 
     @Test
     void submitAnswer_duringReadyPhase_shouldThrowNotStarted() {
-        // Question shown 1 s ago, answering opens only after 3 s
         session.setQuestionStartedAt(LocalDateTime.now().minusSeconds(1));
         when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(session));
         when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
@@ -231,7 +228,6 @@ public class PlayerServiceTest {
 
     @Test
     void submitAnswer_slightlyBeforeAnsweringOpens_shouldAcceptWithZeroTime() {
-        // 200 ms before the official start is inside the 500 ms tolerance
         session.setQuestionStartedAt(LocalDateTime.now().minusNanos(2_800_000_000L));
         when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(session));
         when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
@@ -248,7 +244,6 @@ public class PlayerServiceTest {
 
     @Test
     void submitAnswer_withinLateTolerance_shouldAcceptWithFullTime() {
-        // 3 s ready + 20 s limit + 0.5 s late: still inside the 1 s tolerance, time counted as the full limit
         session.setQuestionStartedAt(LocalDateTime.now().minusNanos(23_500_000_000L));
         when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(session));
         when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
@@ -265,7 +260,6 @@ public class PlayerServiceTest {
 
     @Test
     void submitAnswer_afterDeadline_shouldThrowTimeIsUp() {
-        // 3 s ready + 20 s limit + 1 s tolerance = 24 s
         session.setQuestionStartedAt(LocalDateTime.now().minusSeconds(25));
         when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(session));
         when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
@@ -391,7 +385,6 @@ public class PlayerServiceTest {
                 .isInstanceOf(IllegalStateException.class);
     }
 
-    // Apply Round Scores
     @Test
     void applyRoundScores_correctAnswer_shouldAddPointsAndIncreaseStreak() {
         PlayerAnswer playerAnswer = PlayerAnswer.builder()
@@ -439,7 +432,6 @@ public class PlayerServiceTest {
         verify(playerRepository).save(player);
     }
 
-    // Is Valid Player (STOMP CONNECT)
     @Test
     void isValidPlayer_matchingToken_shouldReturnTrue() {
         when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
@@ -456,7 +448,6 @@ public class PlayerServiceTest {
         assertThat(playerService.isValidPlayer(77L, "token-1")).isFalse();
     }
 
-    // Rejoin Game
     @Test
     void rejoinGame_answeredButNotFinalized_shouldReturnOnlyChosenAnswer() {
         PlayerAnswer playerAnswer = PlayerAnswer.builder()
@@ -478,7 +469,6 @@ public class PlayerServiceTest {
         assertThat(response.getRejoinToken()).isEqualTo("token-1");
         assertThat(response.getAnsweredCurrentQuestion()).isTrue();
         assertThat(response.getChosenAnswerId()).isEqualTo(2L);
-        // Correct answer is not revealed while the question is open
         assertThat(response.getCurrentAnswerResult()).isNull();
     }
 

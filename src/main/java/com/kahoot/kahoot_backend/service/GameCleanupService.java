@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.List;
 
-// Periodically removes games the host abandoned, so they don't stay in /mine and /public forever
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -48,7 +47,6 @@ public class GameCleanupService {
             session.setEndedAt(LocalDateTime.now());
             gameSessionRepository.save(session);
 
-            // Players still connected see the final results, same as after a host "end"
             gameMessageService.broadcastFinalResults(session.getPinCode(), session);
             log.info("Auto-completed abandoned game {}", session.getPinCode());
         }

@@ -31,7 +31,6 @@ public class Player {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Same as ON DELETE CASCADE in V1; lets the bulk session delete remove players
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "game_session_id", nullable = false)
     @OnDelete(action = OnDeleteAction.CASCADE)

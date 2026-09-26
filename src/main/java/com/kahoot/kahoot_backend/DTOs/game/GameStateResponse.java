@@ -23,21 +23,16 @@ public class GameStateResponse {
 
     private Integer totalQuestions;
 
-    // null in WAITING and COMPLETED
     private QuestionDTO currentQuestion;
 
-    // Epoch millis; null when there is no current question
     private Long questionStartedAt;
 
-    // Epoch millis; lets the client correct for clock skew
     private Long serverTime;
 
     private Integer answeredCount;
 
-    // True once the host finalized the current question
     private Boolean questionFinalized;
 
-    // Same shape as /answer-result, one per player; only when questionFinalized is true, otherwise null
     private List<AnswerResultDTO> roundResults;
 
     private List<PlayerInfoDTO> players;

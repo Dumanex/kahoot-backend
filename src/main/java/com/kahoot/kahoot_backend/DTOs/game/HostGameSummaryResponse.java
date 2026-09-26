@@ -26,7 +26,6 @@ public class HostGameSummaryResponse {
     private LocalDateTime startedAt;
     private LocalDateTime endedAt;
 
-    // Only for COMPLETED games with at least one player who scored points
     private String winnerNickname;
     private Integer winnerScore;
 }

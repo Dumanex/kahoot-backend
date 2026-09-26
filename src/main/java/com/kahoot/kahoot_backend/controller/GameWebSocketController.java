@@ -27,7 +27,6 @@ public class GameWebSocketController {
 
     @MessageMapping("/game/{pinCode}/answer")
     public void submitAnswer(@DestinationVariable String pinCode, @Payload AnswerSubmitRequest request, Principal principal) {
-        // principal (set on CONNECT from playerId + rejoinToken) is only used to send errors back privately
         gameMessageService.handlePlayerAnswer(pinCode, request, principal);
     }
 
@@ -60,7 +59,6 @@ public class GameWebSocketController {
         } catch (SecurityException e) {
             log.warn("Rejected host command for game {}: {}", pinCode, e.getMessage());
         } catch (IllegalStateException | ResourceNotFoundException e) {
-            // Only the host sees it (/user/queue/errors), not the players
             gameMessageService.sendErrorToUser(principal, e.getMessage());
         }
     }

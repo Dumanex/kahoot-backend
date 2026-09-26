@@ -5,7 +5,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-// Sent only to the player who answered; the result (correct or not, points) comes after finalize
 @Data
 @Builder
 @NoArgsConstructor

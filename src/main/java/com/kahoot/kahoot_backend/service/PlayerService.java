@@ -69,7 +69,6 @@ public class PlayerService {
             throw new IllegalStateException("Can only rejoin while game is WAITING or IN_PROGRESS. Current status: " + session.getStatus());
         }
 
-        // Same error for unknown player, other game and wrong token so nothing is revealed
         Player player = playerRepository.findById(playerId)
                 .filter(p -> p.getGameSession().getId().equals(session.getId()))
                 .filter(p -> tokensMatch(p.getRejoinToken(), rejoinToken))
@@ -88,7 +87,6 @@ public class PlayerService {
                     response.setChosenAnswerId(playerAnswer.getAnswer() != null ? playerAnswer.getAnswer().getId() : null);
                 }
 
-                // Correct answer and points only after finalize, the same moment /user/queue/answer-result is sent
                 if (session.isQuestionFinalized()) {
                     response.setCurrentAnswerResult(GameDtoMapper.toAnswerResult(player, playerAnswer, currentQuestion));
                 }
@@ -98,7 +96,6 @@ public class PlayerService {
         return response;
     }
 
-    // Used on STOMP CONNECT to give the connection the player's identity (private /user/queue/... messages)
     public boolean isValidPlayer(Long playerId, String rejoinToken) {
         return playerRepository.findById(playerId)
                 .map(player -> tokensMatch(player.getRejoinToken(), rejoinToken))
@@ -107,11 +104,8 @@ public class PlayerService {
 
     // ======================== SUBMIT ANSWER (WebSocket) ========================
 
-    // Only stores the answer; score and streak change in applyRoundScores, so while the question is open
-    // nobody can tell from the scores (GET /state, /players) who answered correctly
     @Transactional
     public AnswerAcceptedDTO submitAnswer(String pinCode, Long playerId, AnswerSubmitRequest request) {
-        // Locked so finalize (host or server) can't run between the checks below and saving the answer
         GameSession session = gameSessionRepository.findByPinCodeForUpdate(pinCode)
                 .orElseThrow(() -> new ResourceNotFoundException("Game session not found with PIN: " + pinCode));
         validateStatus(session, GameSessionStatus.IN_PROGRESS, "Game is not IN_PROGRESS");
@@ -119,7 +113,6 @@ public class PlayerService {
         Player player = getPlayerOrThrow(playerId);
         validatePlayerInSession(player, session.getId());
 
-        // playerId alone is guessable; the token proves the sender is this player
         if (!tokensMatch(player.getRejoinToken(), request.getRejoinToken())) {
             throw new SecurityException("Invalid rejoin token");
         }
@@ -129,19 +122,16 @@ public class PlayerService {
             throw new IllegalArgumentException("Invalid question");
         }
 
-        // After finalize the round results are already out, a late answer would change them
         if (session.isQuestionFinalized()) {
             throw new IllegalStateException("Question is already finalized");
         }
 
         int responseTimeMs = measureResponseTime(session, currentQuestion);
 
-        // Check if already answered
         if (playerAnswerRepository.existsByPlayerIdAndQuestionId(playerId, request.getQuestionId())) {
             throw new IllegalArgumentException("Already answered this question");
         }
 
-        // Find correct answer
         Answer correctAnswer = currentQuestion.getAnswers()
                 .stream()
                 .filter(Answer::getIsCorrect)
@@ -150,7 +140,6 @@ public class PlayerService {
 
         boolean isCorrect = correctAnswer.getId().equals(request.getAnswerId());
 
-        // Calculate points using ScoringService (streak is still the one from before this question)
         int pointsEarned = scoringService.calculatePoints(
                 isCorrect,
                 responseTimeMs,
@@ -184,8 +173,6 @@ public class PlayerService {
 
     // ======================== APPLY ROUND SCORES (finalize) ========================
 
-    // Called once per question when it is finalized: adds the stored points and updates the streak
-    // of every player (0 for those who didn't answer). Returns one result per player.
     @Transactional
     public List<AnswerResultDTO> applyRoundScores(GameSession session, Question question) {
         Map<Long, PlayerAnswer> answersByPlayer = playerAnswerRepository
@@ -255,7 +242,6 @@ public class PlayerService {
         return null;
     }
 
-    // Time from when answering opened (after the 3 s ready phase) until now, measured by the server
     private int measureResponseTime(GameSession session, Question question) {
         LocalDateTime now = LocalDateTime.now();
         long elapsedMs = Duration.between(QuestionTiming.answeringOpensAt(session), now).toMillis();
@@ -268,7 +254,6 @@ public class PlayerService {
             throw new IllegalStateException("Time is up for this question");
         }
 
-        // Inside the tolerances the time is clamped, so it never goes below 0 or above the limit
         return (int) Math.min(Math.max(elapsedMs, 0), QuestionTiming.timeLimitMs(question));
     }
 

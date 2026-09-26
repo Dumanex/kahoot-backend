@@ -282,7 +282,6 @@ public class GameServiceTest {
                 .isInstanceOf(IllegalStateException.class);
     }
 
-    // Finalize Unanswered
     @Test
     void finalizeUnanswered_inProgressAsHost_shouldApplyScoresAndSendResultsWithoutAdvancing() {
         GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
@@ -337,11 +336,10 @@ public class GameServiceTest {
         verify(playerService, never()).applyRoundScores(any(), any());
     }
 
-    // Auto Finalize (server, when time is up)
     @Test
     void autoFinalizeIfExpired_deadlinePassed_shouldFinalizeWithRoundResults() {
         GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
-        // 3 s ready + 20 s limit + 1 s tolerance = 24 s
+
         inProgressSession.setQuestionStartedAt(LocalDateTime.now().minusSeconds(25));
         when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(inProgressSession));
         when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question(10L)));
@@ -447,7 +445,6 @@ public class GameServiceTest {
         assertThat(summary.getPlayerCount()).isEqualTo(3);
     }
 
-    // List Host Sessions
     @Test
     void listHostSessions_winnerOnlyForCompletedWithPoints() {
         GameSession completed = session(GameSessionStatus.COMPLETED, 4);

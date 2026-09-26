@@ -15,7 +15,6 @@ public class AnswerSubmitRequest {
     @NotNull(message = "PlayerID is required")
     private Long playerId;
 
-    // From the join response; checked against the player so nobody can answer for someone else
     @NotBlank(message = "Rejoin token is required")
     private String rejoinToken;
 

@@ -97,7 +97,6 @@ public class AuthControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
-    // ':' is reserved for player WebSocket names ("player:5")
     @Test
     void register_usernameWithColon_shouldReturn400() throws Exception {
         RegisterRequest request = RegisterRequest.builder()

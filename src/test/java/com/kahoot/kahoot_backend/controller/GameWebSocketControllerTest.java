@@ -41,7 +41,6 @@ public class GameWebSocketControllerTest {
         return new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
     }
 
-    // Authenticated host
     @Test
     void startGame_authenticatedHost_shouldCallGameServiceWithUserId() {
         controller.startGame(PIN, hostAuth(1L));
@@ -70,7 +69,6 @@ public class GameWebSocketControllerTest {
         verify(gameService).finalizeUnanswered(PIN, 1L);
     }
 
-    // Unauthenticated caller
     @Test
     void startGame_noPrincipal_shouldRejectWithoutCallingServices() {
         controller.startGame(PIN, null);
@@ -89,7 +87,6 @@ public class GameWebSocketControllerTest {
         verifyNoInteractions(gameMessageService);
     }
 
-    // Authenticated but not the creator of the quiz
     @Test
     void startGame_notCreator_shouldNotBroadcastErrorToPlayers() {
         when(gameService.startGame(PIN, 2L)).thenThrow(new SecurityException("You are not the creator of this quiz"));
@@ -99,7 +96,6 @@ public class GameWebSocketControllerTest {
         verify(gameMessageService, never()).sendErrorToUser(any(), anyString());
     }
 
-    // Errors visible only to the host
     @Test
     void startGame_illegalState_shouldSendErrorOnlyToHost() {
         Authentication host = hostAuth(1L);
@@ -120,7 +116,6 @@ public class GameWebSocketControllerTest {
         verify(gameMessageService).sendErrorToUser(host, "Game session not found with PIN: " + PIN);
     }
 
-    // Player answer
     @Test
     void submitAnswer_shouldPassPrincipalForPrivateErrors() {
         AnswerSubmitRequest request = AnswerSubmitRequest.builder().playerId(5L).rejoinToken("token-1").questionId(10L).answerId(1L).build();
