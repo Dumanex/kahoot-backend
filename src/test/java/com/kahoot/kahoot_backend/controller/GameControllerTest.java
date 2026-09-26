@@ -5,6 +5,7 @@ import com.kahoot.kahoot_backend.config.SecurityConfig;
 import com.kahoot.kahoot_backend.config.WithMockUserPrincipal;
 import com.kahoot.kahoot_backend.enums.GameSessionStatus;
 import com.kahoot.kahoot_backend.repository.UserRepository;
+import com.kahoot.kahoot_backend.service.GameMessageService;
 import com.kahoot.kahoot_backend.service.GameService;
 import com.kahoot.kahoot_backend.service.JwtService;
 import com.kahoot.kahoot_backend.service.PlayerService;
@@ -47,6 +48,9 @@ public class GameControllerTest {
 
     @MockitoBean
     private PlayerService playerService;
+
+    @MockitoBean
+    private GameMessageService gameMessageService;
 
     @MockitoBean
     private JwtService jwtService;

@@ -98,12 +98,14 @@ public class PlayerServiceTest {
                 .nickname("p1")
                 .score(0)
                 .streak(2)
+                .rejoinToken("token-1")
                 .build();
     }
 
     private AnswerSubmitRequest submitRequest(Long answerId) {
         return AnswerSubmitRequest.builder()
                 .playerId(5L)
+                .rejoinToken("token-1")
                 .questionId(10L)
                 .answerId(answerId)
                 .responseTimeMs(3000)
@@ -128,6 +130,8 @@ public class PlayerServiceTest {
 
         assertThat(response.getNickname()).isEqualTo("newPlayer");
         assertThat(response.getScore()).isZero();
+        assertThat(response.getRejoinToken()).isNotBlank();
+        assertThat(response.getAnsweredCurrentQuestion()).isFalse();
     }
 
     @Test
@@ -248,6 +252,7 @@ public class PlayerServiceTest {
 
         AnswerSubmitRequest req = AnswerSubmitRequest.builder()
                 .playerId(5L)
+                .rejoinToken("token-1")
                 .questionId(999L)
                 .answerId(1L)
                 .responseTimeMs(3000)
@@ -266,6 +271,32 @@ public class PlayerServiceTest {
 
         assertThatThrownBy(() -> playerService.submitAnswer("123456", 5L, submitRequest(1L)))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void submitAnswer_wrongRejoinToken_shouldThrowSecurityExceptionAndNotSave() {
+        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(session));
+        when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
+
+        AnswerSubmitRequest req = submitRequest(1L);
+        req.setRejoinToken("someone-elses-token");
+
+        assertThatThrownBy(() -> playerService.submitAnswer("123456", 5L, req))
+                .isInstanceOf(SecurityException.class)
+                .hasMessage("Invalid rejoin token");
+        verify(playerAnswerRepository, never()).save(any(PlayerAnswer.class));
+    }
+
+    @Test
+    void submitAnswer_questionAlreadyFinalized_shouldThrowIllegalState() {
+        session.setQuestionFinalized(true);
+        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(session));
+        when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
+        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question));
+
+        assertThatThrownBy(() -> playerService.submitAnswer("123456", 5L, submitRequest(1L)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Question is already finalized");
     }
 
     @Test
@@ -319,6 +350,110 @@ public class PlayerServiceTest {
         verify(playerRepository, never()).save(any(Player.class));
     }
 
+    // Rejoin Game
+    @Test
+    void rejoinGame_inProgressAndAlreadyAnswered_shouldReturnSamePlayerWithOwnResult() {
+        PlayerAnswer playerAnswer = PlayerAnswer.builder()
+                .player(player)
+                .question(question)
+                .answer(wrongAnswer)
+                .isCorrect(false)
+                .pointsEarned(0)
+                .build();
+        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(session));
+        when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
+        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question));
+        when(playerAnswerRepository.findByPlayerIdAndQuestionId(5L, 10L)).thenReturn(Optional.of(playerAnswer));
+
+        PlayerResponse response = playerService.rejoinGame("123456", 5L, "token-1");
+
+        assertThat(response.getId()).isEqualTo(5L);
+        assertThat(response.getNickname()).isEqualTo("p1");
+        assertThat(response.getRejoinToken()).isEqualTo("token-1");
+        assertThat(response.getAnsweredCurrentQuestion()).isTrue();
+        assertThat(response.getCurrentAnswerResult().getChosenAnswerId()).isEqualTo(2L);
+        assertThat(response.getCurrentAnswerResult().getIsCorrect()).isFalse();
+    }
+
+    @Test
+    void rejoinGame_inProgressNotAnswered_shouldHaveNoResult() {
+        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(session));
+        when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
+        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question));
+        when(playerAnswerRepository.findByPlayerIdAndQuestionId(5L, 10L)).thenReturn(Optional.empty());
+
+        PlayerResponse response = playerService.rejoinGame("123456", 5L, "token-1");
+
+        assertThat(response.getAnsweredCurrentQuestion()).isFalse();
+        assertThat(response.getCurrentAnswerResult()).isNull();
+    }
+
+    @Test
+    void rejoinGame_waiting_shouldReturnPlayerWithoutCheckingAnswers() {
+        session.setStatus(GameSessionStatus.WAITING);
+        player.setRejoinToken("token-1");
+        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(session));
+        when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
+
+        PlayerResponse response = playerService.rejoinGame("123456", 5L, "token-1");
+
+        assertThat(response.getAnsweredCurrentQuestion()).isFalse();
+        verify(playerAnswerRepository, never()).findByPlayerIdAndQuestionId(any(), any());
+    }
+
+    @Test
+    void rejoinGame_wrongToken_shouldThrowSecurityException() {
+        player.setRejoinToken("token-1");
+        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(session));
+        when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
+
+        assertThatThrownBy(() -> playerService.rejoinGame("123456", 5L, "wrong"))
+                .isInstanceOf(SecurityException.class)
+                .hasMessage("Invalid rejoin token");
+    }
+
+    @Test
+    void rejoinGame_playerWithoutToken_shouldThrowSecurityException() {
+        player.setRejoinToken(null);
+        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(session));
+        when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
+
+        assertThatThrownBy(() -> playerService.rejoinGame("123456", 5L, "token-1"))
+                .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    void rejoinGame_playerFromOtherGame_shouldThrowSecurityException() {
+        GameSession otherSession = GameSession.builder().id(999L).quiz(quiz).build();
+        player.setGameSession(otherSession);
+        player.setRejoinToken("token-1");
+        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(session));
+        when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
+
+        assertThatThrownBy(() -> playerService.rejoinGame("123456", 5L, "token-1"))
+                .isInstanceOf(SecurityException.class)
+                .hasMessage("Invalid rejoin token");
+    }
+
+    @Test
+    void rejoinGame_unknownPlayer_shouldThrowSecurityException() {
+        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(session));
+        when(playerRepository.findById(77L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> playerService.rejoinGame("123456", 77L, "token-1"))
+                .isInstanceOf(SecurityException.class)
+                .hasMessage("Invalid rejoin token");
+    }
+
+    @Test
+    void rejoinGame_completedGame_shouldThrowIllegalState() {
+        session.setStatus(GameSessionStatus.COMPLETED);
+        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(session));
+
+        assertThatThrownBy(() -> playerService.rejoinGame("123456", 5L, "token-1"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Can only rejoin while game is WAITING or IN_PROGRESS. Current status: COMPLETED");
+    }
 
 
 

@@ -81,29 +81,15 @@ public class GameMessageServiceTest {
                 .build();
     }
 
-    // Handle Player Join
+    // Broadcast Player List (called after REST join)
     @Test
-    void handlePlayerJoin_validNickname_shouldBroadcastPlayerList() {
-        GameSession waitingSession = session(GameSessionStatus.WAITING, 0);
-        when(gameSessionRepository.findByPinCode(PIN)).thenReturn(Optional.of(waitingSession));
+    void broadcastPlayerList_shouldSendPlayersToTopic() {
+        when(gameSessionRepository.findByPinCode(PIN)).thenReturn(Optional.of(session(GameSessionStatus.WAITING, 0)));
         when(playerRepository.findByGameSessionId(200L)).thenReturn(List.of());
 
-        gameMessageService.handlePlayerJoin(PIN, "newPlayer");
+        gameMessageService.broadcastPlayerList(PIN);
 
         verify(messagingTemplate).convertAndSend(eq("/topic/game/" + PIN + "/players"), any(Object.class));
-        verify(messagingTemplate, never()).convertAndSend(eq("/topic/game/" + PIN + "/error"), any(Object.class));
-    }
-
-    @Test
-    void handlePlayerJoin_playerServiceThrows_shouldSendErrorAndSkipBroadcast() {
-        doThrow(new IllegalArgumentException("Nickname 'p1' is already taken in this game"))
-                .when(playerService).joinGame(PIN, "p1");
-
-        gameMessageService.handlePlayerJoin(PIN, "p1");
-
-        verify(messagingTemplate).convertAndSend(eq("/topic/game/" + PIN + "/error"), any(Object.class));
-        verify(messagingTemplate, never()).convertAndSend(eq("/topic/game/" + PIN + "/players"), any(Object.class));
-        verify(gameSessionRepository, never()).findByPinCode(anyString());
     }
 
     // Handle Player Answer

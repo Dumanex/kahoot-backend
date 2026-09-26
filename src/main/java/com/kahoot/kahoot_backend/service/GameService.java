@@ -1,14 +1,20 @@
 package com.kahoot.kahoot_backend.service;
 
+import com.kahoot.kahoot_backend.DTOs.game.AnswerResultDTO;
 import com.kahoot.kahoot_backend.DTOs.game.GameCreateRequest;
 import com.kahoot.kahoot_backend.DTOs.game.GameSessionResponse;
+import com.kahoot.kahoot_backend.DTOs.game.GameStateResponse;
 import com.kahoot.kahoot_backend.DTOs.game.PublicGameSummaryResponse;
 import com.kahoot.kahoot_backend.enums.GameSessionStatus;
 import com.kahoot.kahoot_backend.enums.GameSessionVisibility;
 import com.kahoot.kahoot_backend.exception.ResourceNotFoundException;
 import com.kahoot.kahoot_backend.model.GameSession;
+import com.kahoot.kahoot_backend.model.Player;
+import com.kahoot.kahoot_backend.model.PlayerAnswer;
+import com.kahoot.kahoot_backend.model.Question;
 import com.kahoot.kahoot_backend.model.Quiz;
 import com.kahoot.kahoot_backend.repository.GameSessionRepository;
+import com.kahoot.kahoot_backend.repository.PlayerAnswerRepository;
 import com.kahoot.kahoot_backend.repository.PlayerRepository;
 import com.kahoot.kahoot_backend.repository.QuestionRepository;
 import com.kahoot.kahoot_backend.repository.QuizRepository;
@@ -19,7 +25,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +38,7 @@ public class GameService {
     private final QuizRepository quizRepository;
     private final QuestionRepository questionRepository;
     private final PlayerRepository playerRepository;
+    private final PlayerAnswerRepository playerAnswerRepository;
     private final GameMessageService gameMessageService;
 
     private static final int MAX_PIN_RETRIES = 10;
@@ -71,8 +82,11 @@ public class GameService {
         validateHost(session, userId);
         validateStatus(session, GameSessionStatus.WAITING, "Game can only be started from WAITING status");
 
+        LocalDateTime now = LocalDateTime.now();
         session.setStatus(GameSessionStatus.IN_PROGRESS);
-        session.setStartedAt(LocalDateTime.now());
+        session.setStartedAt(now);
+        session.setQuestionStartedAt(now);
+        session.setQuestionFinalized(false);
         session.setCurrentQuestionIndex(0);
         session = gameSessionRepository.save(session);
 
@@ -99,6 +113,8 @@ public class GameService {
         }
 
         session.setCurrentQuestionIndex(nextIndex);
+        session.setQuestionStartedAt(LocalDateTime.now());
+        session.setQuestionFinalized(false);
         session = gameSessionRepository.save(session);
 
         gameMessageService.broadcastCurrentQuestion(pinCode, session);
@@ -131,6 +147,18 @@ public class GameService {
         validateStatus(session, GameSessionStatus.IN_PROGRESS, "Game must be IN_PROGRESS to finalize unanswered players");
 
         gameMessageService.finalizeUnansweredPlayers(pinCode, session);
+
+        // Lets a host that refreshes on the round-results screen restore it via /state
+        session.setQuestionFinalized(true);
+        gameSessionRepository.save(session);
+
+        // Complete list for hosts that missed individual answer-results (e.g. after a refresh)
+        List<Question> questions = questionRepository.findByQuizIdOrderByOrderIndex(session.getQuiz().getId());
+        int index = session.getCurrentQuestionIndex();
+        if (index >= 0 && index < questions.size()) {
+            List<Player> players = playerRepository.findByGameSessionId(session.getId());
+            gameMessageService.broadcastRoundResults(pinCode, buildRoundResults(session, questions.get(index), players));
+        }
     }
 
     // ========================= PUBLIC OPERATIONS (without JWT) =========================
@@ -139,6 +167,53 @@ public class GameService {
         GameSession session = getSessionOrThrow(pinCode);
         int totalQuestions = questionRepository.countByQuizId(session.getQuiz().getId());
         return mapToSessionResponse(session, totalQuestions);
+    }
+
+    // Snapshot for a client that (re)connects mid-game; same data as the public /topic broadcasts
+    @Transactional
+    public GameStateResponse getGameState(String pinCode) {
+        GameSession session = getSessionOrThrow(pinCode);
+        List<Question> questions = questionRepository.findByQuizIdOrderByOrderIndex(session.getQuiz().getId());
+        List<Player> players = playerRepository.findByGameSessionId(session.getId());
+
+        Question currentQuestion = null;
+        int index = session.getCurrentQuestionIndex();
+        if (session.getStatus() == GameSessionStatus.IN_PROGRESS && index >= 0 && index < questions.size()) {
+            currentQuestion = questions.get(index);
+        }
+
+        Long questionStartedAt = null;
+        int answeredCount = 0;
+        boolean questionFinalized = false;
+        List<AnswerResultDTO> roundResults = null;
+        if (currentQuestion != null) {
+            if (session.getQuestionStartedAt() != null) {
+                questionStartedAt = GameDtoMapper.toEpochMillis(session.getQuestionStartedAt());
+            }
+            answeredCount = playerAnswerRepository.countByQuestionIdAndPlayerGameSessionId(currentQuestion.getId(), session.getId());
+            questionFinalized = session.isQuestionFinalized();
+
+            // Only after finalize, so correct answers are not revealed while the question is open
+            if (questionFinalized) {
+                roundResults = buildRoundResults(session, currentQuestion, players);
+            }
+        }
+
+        return GameStateResponse.builder()
+                .pinCode(session.getPinCode())
+                .status(session.getStatus())
+                .quizTitle(session.getQuiz().getTitle())
+                .currentQuestionIndex(session.getCurrentQuestionIndex())
+                .totalQuestions(questions.size())
+                .currentQuestion(currentQuestion != null ? GameDtoMapper.toQuestionDTO(currentQuestion, session.getQuestionStartedAt()) : null)
+                .questionStartedAt(questionStartedAt)
+                .serverTime(System.currentTimeMillis())
+                .answeredCount(answeredCount)
+                .questionFinalized(questionFinalized)
+                .roundResults(roundResults)
+                .players(GameDtoMapper.toPlayerInfos(players))
+                .leaderboard(GameDtoMapper.toLeaderboard(players))
+                .build();
     }
 
     public Page<PublicGameSummaryResponse> listPublicSessions(String q, Pageable pageable) {
@@ -189,6 +264,17 @@ public class GameService {
                 .playerCount(playerCount)
                 .createdAt(session.getCreatedAt())
                 .build();
+    }
+
+    private List<AnswerResultDTO> buildRoundResults(GameSession session, Question question, List<Player> players) {
+        Map<Long, PlayerAnswer> answersByPlayer = playerAnswerRepository
+                .findByQuestionIdAndPlayerGameSessionId(question.getId(), session.getId())
+                .stream()
+                .collect(Collectors.toMap(answer -> answer.getPlayer().getId(), Function.identity()));
+
+        return players.stream()
+                .map(player -> GameDtoMapper.toAnswerResult(player, answersByPlayer.get(player.getId()), question))
+                .toList();
     }
 
     private GameSession getSessionOrThrow(String pinCode) {

@@ -2,6 +2,7 @@ package com.kahoot.kahoot_backend.controller;
 
 import com.kahoot.kahoot_backend.DTOs.game.*;
 import com.kahoot.kahoot_backend.config.UserPrincipal;
+import com.kahoot.kahoot_backend.service.GameMessageService;
 import com.kahoot.kahoot_backend.service.GameService;
 import com.kahoot.kahoot_backend.service.PlayerService;
 import jakarta.validation.Valid;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 public class GameController {
     private final GameService gameService;
     private final PlayerService playerService;
+    private final GameMessageService gameMessageService;
 
     // ========================= HOST ENDPOINTS =========================
 
@@ -82,7 +84,22 @@ public class GameController {
     @PostMapping("/api/games/{pinCode}/join")
     public ResponseEntity<PlayerResponse> joinGame(@PathVariable String pinCode, @Valid @RequestBody PlayerJoinRequest request) {
         PlayerResponse player = playerService.joinGame(pinCode, request.getNickname());
+        gameMessageService.broadcastPlayerList(pinCode);
 
         return ResponseEntity.ok(player);
+    }
+
+    @PostMapping("/api/games/{pinCode}/rejoin")
+    public ResponseEntity<PlayerResponse> rejoinGame(@PathVariable String pinCode, @Valid @RequestBody PlayerRejoinRequest request) {
+        PlayerResponse player = playerService.rejoinGame(pinCode, request.getPlayerId(), request.getRejoinToken());
+
+        return ResponseEntity.ok(player);
+    }
+
+    @GetMapping("/api/games/{pinCode}/state")
+    public ResponseEntity<GameStateResponse> getGameState(@PathVariable String pinCode) {
+        GameStateResponse state = gameService.getGameState(pinCode);
+
+        return ResponseEntity.ok(state);
     }
 }

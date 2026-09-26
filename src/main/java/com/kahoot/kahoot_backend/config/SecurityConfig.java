@@ -105,6 +105,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/games/{pinCode}").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/games/{pinCode}/join").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/games/{pinCode}/rejoin").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/games/{pinCode}/state").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/games/public").permitAll()
                         .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()

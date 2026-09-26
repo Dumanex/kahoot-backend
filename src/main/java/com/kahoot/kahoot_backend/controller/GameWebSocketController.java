@@ -1,7 +1,6 @@
 package com.kahoot.kahoot_backend.controller;
 
 import com.kahoot.kahoot_backend.DTOs.game.AnswerSubmitRequest;
-import com.kahoot.kahoot_backend.DTOs.game.PlayerJoinRequest;
 import com.kahoot.kahoot_backend.config.UserPrincipal;
 import com.kahoot.kahoot_backend.exception.ResourceNotFoundException;
 import com.kahoot.kahoot_backend.service.GameMessageService;
@@ -24,12 +23,7 @@ public class GameWebSocketController {
     private final GameService gameService;
     private final GameMessageService gameMessageService;
 
-    // ======================== PLAYERS (no JWT required) ========================
-
-    @MessageMapping("/game/{pinCode}/join")
-    public void joinGame(@DestinationVariable String pinCode, @Payload PlayerJoinRequest request) {
-        gameMessageService.handlePlayerJoin(pinCode, request.getNickname());
-    }
+    // ======================== PLAYERS (no JWT required; join is REST-only) ========================
 
     @MessageMapping("/game/{pinCode}/answer")
     public void submitAnswer(@DestinationVariable String pinCode, @Payload AnswerSubmitRequest request) {

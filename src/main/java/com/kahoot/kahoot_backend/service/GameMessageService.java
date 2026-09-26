@@ -7,13 +7,13 @@ import com.kahoot.kahoot_backend.repository.GameSessionRepository;
 import com.kahoot.kahoot_backend.repository.PlayerRepository;
 import com.kahoot.kahoot_backend.repository.QuestionRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
-import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class GameMessageService {
@@ -25,21 +25,6 @@ public class GameMessageService {
 
     private static final String TOPIC_PREFIX = "/topic/game/";
 
-    // ================== PLAYER JOIN (WebSocket) ==================
-    public void handlePlayerJoin(String pinCode, String nickname) {
-        try {
-            playerService.joinGame(pinCode, nickname);
-        } catch (IllegalArgumentException | IllegalStateException | ResourceNotFoundException e) {
-            sendError(pinCode, e.getMessage());
-            return;
-        }
-
-        GameSession session = getSessionOrThrow(pinCode);
-
-        // Broadcast players list to everyone
-        broadcastPlayerList(pinCode, session);
-    }
-
     // ================== PLAYER ANSWER ==================
     public void handlePlayerAnswer(String pinCode, AnswerSubmitRequest request) {
         try {
@@ -50,6 +35,9 @@ public class GameMessageService {
 
             // Broadcast leaderboard
             broadcastLeaderboard(pinCode, getSessionOrThrow(pinCode));
+        } catch (SecurityException e) {
+            // Same policy as rejected host commands: log only, don't let a forger spam /error for everyone
+            log.warn("Rejected answer for game {} (player {}): {}", pinCode, request.getPlayerId(), e.getMessage());
         } catch (IllegalArgumentException | IllegalStateException | ResourceNotFoundException e) {
             sendError(pinCode, e.getMessage());
         }
@@ -77,37 +65,22 @@ public class GameMessageService {
 
     // ================== BROADCAST METHODS ==================
 
-    private void broadcastPlayerList(String pinCode, GameSession session) {
+    public void broadcastRoundResults(String pinCode, List<AnswerResultDTO> roundResults) {
+        messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/round-results", roundResults);
+    }
+
+    // Public so the REST join endpoint can announce the new player as well
+    public void broadcastPlayerList(String pinCode) {
+        GameSession session = getSessionOrThrow(pinCode);
         List<Player> players = playerRepository.findByGameSessionId(session.getId());
 
-        List<PlayerInfoDTO> playerInfos = players
-                .stream()
-                .map(player -> PlayerInfoDTO.builder()
-                        .id(player.getId())
-                        .nickname(player.getNickname())
-                        .score(player.getScore())
-                        .streak(player.getStreak())
-                        .build())
-                .collect(Collectors.toList());
-
-        messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/players", playerInfos);
+        messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/players", GameDtoMapper.toPlayerInfos(players));
     }
 
     private void broadcastLeaderboard(String pinCode, GameSession session) {
         List<Player> players = playerRepository.findByGameSessionId(session.getId());
 
-        List<LeaderboardEntryDTO> leaderboard = players
-                .stream()
-                .sorted(Comparator.comparing(Player::getScore).reversed())
-                .map(player -> LeaderboardEntryDTO.builder()
-                        .playerId(player.getId())
-                        .nickname(player.getNickname())
-                        .score(player.getScore())
-                        .streak(player.getStreak())
-                        .build())
-                .collect(Collectors.toList());
-
-        messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/leaderboard", leaderboard);
+        messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/leaderboard", GameDtoMapper.toLeaderboard(players));
     }
 
     public void broadcastCurrentQuestion(String pinCode, GameSession session) {
@@ -117,48 +90,15 @@ public class GameMessageService {
             return;
         }
 
-        List<AnswerDTO> answers = question.getAnswers()
-                .stream()
-                .map(answer -> AnswerDTO.builder()
-                        .id(answer.getId())
-                        .answerText(answer.getAnswerText())
-                        .symbol(answer.getSymbol())
-                        .color(answer.getColor())
-                        .orderIndex(answer.getOrderIndex())
-                        .build())
-                .collect(Collectors.toList());
-
-        QuestionDTO questionDTO = QuestionDTO.builder()
-                .id(question.getId())
-                .questionType(question.getQuestionType())
-                .questionText(question.getQuestionText())
-                .imageUrl(question.getImageUrl())
-                .audioUrl(question.getAudioUrl())
-                .timeLimitSeconds(question.getTimeLimitSeconds())
-                .orderIndex(question.getOrderIndex())
-                .answers(answers)
-                .build();
-
-        messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/question", questionDTO);
+        messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/question", GameDtoMapper.toQuestionDTO(question, session.getQuestionStartedAt()));
     }
 
     public void broadcastFinalResults(String pinCode, GameSession session) {
         List<Player> players = playerRepository.findByGameSessionId(session.getId());
 
-        List<LeaderboardEntryDTO> finalLeaderboard = players
-                .stream()
-                .sorted(Comparator.comparing(Player::getScore).reversed())
-                .map(player -> LeaderboardEntryDTO.builder()
-                        .playerId(player.getId())
-                        .nickname(player.getNickname())
-                        .score(player.getScore())
-                        .streak(player.getStreak())
-                        .build())
-                .collect(Collectors.toList());
-
         FinalResultDTO finalResult = FinalResultDTO.builder()
                 .quizTitle(session.getQuiz().getTitle())
-                .leaderboard(finalLeaderboard)
+                .leaderboard(GameDtoMapper.toLeaderboard(players))
                 .build();
 
         messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/ended", finalResult);

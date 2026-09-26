@@ -7,9 +7,11 @@ import com.kahoot.kahoot_backend.enums.GameSessionStatus;
 import com.kahoot.kahoot_backend.enums.GameSessionVisibility;
 import com.kahoot.kahoot_backend.exception.ResourceNotFoundException;
 import com.kahoot.kahoot_backend.model.GameSession;
+import com.kahoot.kahoot_backend.model.Question;
 import com.kahoot.kahoot_backend.model.Quiz;
 import com.kahoot.kahoot_backend.model.User;
 import com.kahoot.kahoot_backend.repository.GameSessionRepository;
+import com.kahoot.kahoot_backend.repository.PlayerAnswerRepository;
 import com.kahoot.kahoot_backend.repository.PlayerRepository;
 import com.kahoot.kahoot_backend.repository.QuestionRepository;
 import com.kahoot.kahoot_backend.repository.QuizRepository;
@@ -30,6 +32,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
@@ -46,6 +49,9 @@ public class GameServiceTest {
 
     @Mock
     private PlayerRepository playerRepository;
+
+    @Mock
+    private PlayerAnswerRepository playerAnswerRepository;
 
     @Mock
     private GameMessageService gameMessageService;
@@ -232,12 +238,17 @@ public class GameServiceTest {
     @Test
     void finalizeUnanswered_inProgressAsHost_shouldFinalizeWithoutAdvancing() {
         GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
+        Question question = Question.builder().id(10L).quiz(quiz).answers(List.of()).build();
         when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(inProgressSession));
+        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question));
 
         gameService.finalizeUnanswered("123456", HOST_ID);
 
         verify(gameMessageService).finalizeUnansweredPlayers("123456", inProgressSession);
-        verify(gameSessionRepository, never()).save(any(GameSession.class));
+        assertThat(inProgressSession.isQuestionFinalized()).isTrue();
+        assertThat(inProgressSession.getCurrentQuestionIndex()).isZero();
+        verify(gameSessionRepository).save(inProgressSession);
+        verify(gameMessageService).broadcastRoundResults(eq("123456"), anyList());
     }
 
     @Test

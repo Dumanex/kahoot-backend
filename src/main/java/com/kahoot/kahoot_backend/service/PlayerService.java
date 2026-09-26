@@ -15,8 +15,11 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -44,12 +47,46 @@ public class PlayerService {
                 .nickname(nickname)
                 .score(0)
                 .streak(0)
+                .rejoinToken(UUID.randomUUID().toString())
                 .joinedAt(LocalDateTime.now())
                 .build();
 
         player = playerRepository.save(player);
 
-        return mapToPlayerResponse(player);
+        return mapToPlayerResponse(player, false);
+    }
+
+    // ======================== REJOIN GAME (REST, after page refresh) ========================
+
+    @Transactional
+    public PlayerResponse rejoinGame(String pinCode, Long playerId, String rejoinToken) {
+        GameSession session = getSessionOrThrow(pinCode);
+
+        if (session.getStatus() == GameSessionStatus.COMPLETED) {
+            throw new IllegalStateException("Can only rejoin while game is WAITING or IN_PROGRESS. Current status: " + session.getStatus());
+        }
+
+        // Same error for unknown player, other game and wrong token so nothing is revealed
+        Player player = playerRepository.findById(playerId)
+                .filter(p -> p.getGameSession().getId().equals(session.getId()))
+                .filter(p -> tokensMatch(p.getRejoinToken(), rejoinToken))
+                .orElseThrow(() -> new SecurityException("Invalid rejoin token"));
+
+        PlayerResponse response = mapToPlayerResponse(player, false);
+
+        if (session.getStatus() == GameSessionStatus.IN_PROGRESS) {
+            Question currentQuestion = getCurrentQuestion(session);
+
+            if (currentQuestion != null) {
+                playerAnswerRepository.findByPlayerIdAndQuestionId(player.getId(), currentQuestion.getId())
+                        .ifPresent(playerAnswer -> {
+                            response.setAnsweredCurrentQuestion(true);
+                            response.setCurrentAnswerResult(GameDtoMapper.toAnswerResult(player, playerAnswer, currentQuestion));
+                        });
+            }
+        }
+
+        return response;
     }
 
     // ======================== SUBMIT ANSWER (WebSocket) ========================
@@ -62,9 +99,19 @@ public class PlayerService {
         Player player = getPlayerOrThrow(playerId);
         validatePlayerInSession(player, session.getId());
 
+        // playerId alone is guessable; the token proves the sender is this player
+        if (!tokensMatch(player.getRejoinToken(), request.getRejoinToken())) {
+            throw new SecurityException("Invalid rejoin token");
+        }
+
         Question currentQuestion = getCurrentQuestion(session);
         if (currentQuestion == null || !currentQuestion.getId().equals(request.getQuestionId())) {
             throw new IllegalArgumentException("Invalid question");
+        }
+
+        // After finalize the round results are already out, a late answer would change them
+        if (session.isQuestionFinalized()) {
+            throw new IllegalStateException("Question is already finalized");
         }
 
         // Check if already answered
@@ -203,23 +250,27 @@ public class PlayerService {
         return null;
     }
 
-    private PlayerResponse mapToPlayerResponse(Player player) {
+    private boolean tokensMatch(String expected, String provided) {
+        if (expected == null || provided == null) {
+            return false;
+        }
+
+        return MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8), provided.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private PlayerResponse mapToPlayerResponse(Player player, boolean answeredCurrentQuestion) {
         return PlayerResponse.builder()
                 .id(player.getId())
                 .nickname(player.getNickname())
                 .score(player.getScore())
                 .streak(player.getStreak())
                 .joinedAt(player.getJoinedAt())
+                .rejoinToken(player.getRejoinToken())
+                .answeredCurrentQuestion(answeredCurrentQuestion)
                 .build();
     }
 
-    private AnswerDTO mapToAnswerDTO(com.kahoot.kahoot_backend.model.Answer answer) {
-        return AnswerDTO.builder()
-                .id(answer.getId())
-                .answerText(answer.getAnswerText())
-                .symbol(answer.getSymbol())
-                .color(answer.getColor())
-                .orderIndex(answer.getOrderIndex())
-                .build();
+    private AnswerDTO mapToAnswerDTO(Answer answer) {
+        return GameDtoMapper.toAnswerDTO(answer);
     }
 }

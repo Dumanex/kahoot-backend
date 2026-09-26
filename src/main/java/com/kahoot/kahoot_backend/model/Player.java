@@ -42,6 +42,9 @@ public class Player {
     @Column(name = "streak")
     private Integer streak = 0;
 
+    @Column(name = "rejoin_token", length = 36)
+    private String rejoinToken;
+
     @Version
     @Column(name = "version")
     private Long version;

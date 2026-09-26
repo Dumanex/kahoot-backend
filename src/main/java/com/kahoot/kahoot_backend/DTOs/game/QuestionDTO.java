@@ -28,4 +28,10 @@ public class QuestionDTO {
     private Integer orderIndex;
 
     private List<AnswerDTO> answers;
+
+    // Epoch millis when the server started this question
+    private Long questionStartedAt;
+
+    // Epoch millis at send time; lets the client correct for clock skew
+    private Long serverTime;
 }
