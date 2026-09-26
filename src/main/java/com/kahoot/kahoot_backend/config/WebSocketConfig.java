@@ -17,10 +17,14 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
         // Server -> Client: topic prefix za broadcast (npr. /topic/game/123456/players)
-        config.enableSimpleBroker("/topic");
+        // /queue: privatne poruke jednom korisniku (klijent se pretplaćuje na /user/queue/...)
+        config.enableSimpleBroker("/topic", "/queue");
 
         // Client -> Server: destination prefix za app endpoint-e (nrp. /app/game/123456/join)
         config.setApplicationDestinationPrefixes("/app");
+
+        // Server -> jedan klijent: /user/queue/errors se za svaku konekciju prevodi na njenu privatnu destinaciju
+        config.setUserDestinationPrefix("/user");
     }
 
     @Override

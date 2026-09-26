@@ -26,8 +26,9 @@ public class GameWebSocketController {
     // ======================== PLAYERS (no JWT required; join is REST-only) ========================
 
     @MessageMapping("/game/{pinCode}/answer")
-    public void submitAnswer(@DestinationVariable String pinCode, @Payload AnswerSubmitRequest request) {
-        gameMessageService.handlePlayerAnswer(pinCode, request);
+    public void submitAnswer(@DestinationVariable String pinCode, @Payload AnswerSubmitRequest request, Principal principal) {
+        // principal (set on CONNECT from playerId + rejoinToken) is only used to send errors back privately
+        gameMessageService.handlePlayerAnswer(pinCode, request, principal);
     }
 
     // ======================== HOST (JWT set in STOMP CONNECT) ========================
@@ -59,7 +60,8 @@ public class GameWebSocketController {
         } catch (SecurityException e) {
             log.warn("Rejected host command for game {}: {}", pinCode, e.getMessage());
         } catch (IllegalStateException | ResourceNotFoundException e) {
-            gameMessageService.sendError(pinCode, e.getMessage());
+            // Only the host sees it (/user/queue/errors), not the players
+            gameMessageService.sendErrorToUser(principal, e.getMessage());
         }
     }
 

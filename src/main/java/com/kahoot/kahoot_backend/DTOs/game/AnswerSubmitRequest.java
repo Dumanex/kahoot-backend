@@ -1,9 +1,7 @@
 package com.kahoot.kahoot_backend.DTOs.game;
 
-import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -26,9 +24,4 @@ public class AnswerSubmitRequest {
 
     @NotNull(message = "AnswerID is required")
     private Long answerId;
-
-    @NotNull(message = "Response time is required")
-    @Positive(message = "Response time must be positive")
-    @Max(value = 300000, message = "Response time max 5 minutes")
-    private Integer responseTimeMs;
 }

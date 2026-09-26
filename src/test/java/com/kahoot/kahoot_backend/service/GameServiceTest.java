@@ -1,5 +1,6 @@
 package com.kahoot.kahoot_backend.service;
 
+import com.kahoot.kahoot_backend.DTOs.game.AnswerResultDTO;
 import com.kahoot.kahoot_backend.DTOs.game.GameCreateRequest;
 import com.kahoot.kahoot_backend.DTOs.game.GameSessionResponse;
 import com.kahoot.kahoot_backend.DTOs.game.HostGameSummaryResponse;
@@ -20,6 +21,7 @@ import com.kahoot.kahoot_backend.repository.QuizRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -28,6 +30,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -58,6 +61,9 @@ public class GameServiceTest {
     @Mock
     private GameMessageService gameMessageService;
 
+    @Mock
+    private PlayerService playerService;
+
     @InjectMocks
     private GameService gameService;
 
@@ -86,6 +92,10 @@ public class GameServiceTest {
                 .status(status)
                 .currentQuestionIndex(currentQuestionIndex)
                 .build();
+    }
+
+    private Question question(Long id) {
+        return Question.builder().id(id).quiz(quiz).timeLimitSeconds(20).answers(List.of()).build();
     }
 
     // Create Session
@@ -175,9 +185,11 @@ public class GameServiceTest {
 
     // Next Question
     @Test
-    void nextQuestion_notLastQuestion_shouldAdvanceIndex() {
+    void nextQuestion_notFinalized_shouldApplyScoresWithoutRoundResultsAndAdvance() {
         GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
-        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(inProgressSession));
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(inProgressSession));
+        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question(10L), question(11L)));
+        when(playerService.applyRoundScores(eq(inProgressSession), any(Question.class))).thenReturn(List.of());
         when(questionRepository.countByQuizId(50L)).thenReturn(5);
         when(gameSessionRepository.save(any(GameSession.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -185,22 +197,40 @@ public class GameServiceTest {
 
         assertThat(response.getCurrentQuestionIndex()).isEqualTo(1);
         assertThat(response.getStatus()).isEqualTo(GameSessionStatus.IN_PROGRESS);
-        verify(gameMessageService).finalizeUnansweredPlayers(eq("123456"), any(GameSession.class));
+        verify(gameMessageService).sendAnswerResults(anyList());
+        verify(gameMessageService).broadcastLeaderboard("123456", inProgressSession);
+        verify(gameMessageService, never()).broadcastRoundResults(anyString(), anyList());
         verify(gameMessageService).broadcastCurrentQuestion(eq("123456"), any(GameSession.class));
         verify(gameMessageService, never()).broadcastFinalResults(anyString(), any(GameSession.class));
+        // Reset for the new question
+        assertThat(inProgressSession.isQuestionFinalized()).isFalse();
+    }
+
+    @Test
+    void nextQuestion_alreadyFinalized_shouldNotApplyScoresAgain() {
+        GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
+        inProgressSession.setQuestionFinalized(true);
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(inProgressSession));
+        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question(10L), question(11L)));
+        when(questionRepository.countByQuizId(50L)).thenReturn(5);
+        when(gameSessionRepository.save(any(GameSession.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        gameService.nextQuestion("123456", HOST_ID);
+
+        verify(playerService, never()).applyRoundScores(any(), any());
+        verify(gameMessageService, never()).sendAnswerResults(anyList());
     }
 
     @Test
     void nextQuestion_lastQuestion_shouldAutoCompleteGame() {
         GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 4);
-        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(inProgressSession));
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(inProgressSession));
         when(questionRepository.countByQuizId(50L)).thenReturn(5);
         when(gameSessionRepository.save(any(GameSession.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         GameSessionResponse response = gameService.nextQuestion("123456", HOST_ID);
 
         assertThat(response.getStatus()).isEqualTo(GameSessionStatus.COMPLETED);
-        verify(gameMessageService).finalizeUnansweredPlayers(eq("123456"), any(GameSession.class));
         verify(gameMessageService).broadcastFinalResults(eq("123456"), any(GameSession.class));
         verify(gameMessageService, never()).broadcastCurrentQuestion(anyString(), any(GameSession.class));
     }
@@ -208,7 +238,7 @@ public class GameServiceTest {
     @Test
     void nextQuestion_notInProgress_shouldThrow() {
         GameSession waitingSession = session(GameSessionStatus.WAITING, 0);
-        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(waitingSession));
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(waitingSession));
 
         assertThatThrownBy(() -> gameService.nextQuestion("123456", HOST_ID))
                 .isInstanceOf(IllegalStateException.class);
@@ -218,7 +248,7 @@ public class GameServiceTest {
     @Test
     void endGame_fromInProgress_shouldTransitionToCompleted() {
         GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 4);
-        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(inProgressSession));
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(inProgressSession));
         when(questionRepository.countByQuizId(50L)).thenReturn(5);
         when(gameSessionRepository.save(any(GameSession.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -228,9 +258,25 @@ public class GameServiceTest {
     }
 
     @Test
+    void endGame_midQuestion_shouldApplyScoresOfCurrentQuestionBeforeFinalResults() {
+        GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(inProgressSession));
+        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question(10L)));
+        when(playerService.applyRoundScores(eq(inProgressSession), any(Question.class))).thenReturn(List.of());
+        when(questionRepository.countByQuizId(50L)).thenReturn(1);
+        when(gameSessionRepository.save(any(GameSession.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        gameService.endGame("123456", HOST_ID);
+
+        InOrder inOrder = inOrder(playerService, gameMessageService);
+        inOrder.verify(playerService).applyRoundScores(eq(inProgressSession), any(Question.class));
+        inOrder.verify(gameMessageService).broadcastFinalResults(eq("123456"), any(GameSession.class));
+    }
+
+    @Test
     void endGame_notFromInProgress_shouldThrow() {
         GameSession waitingSession = session(GameSessionStatus.WAITING, 0);
-        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(waitingSession));
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(waitingSession));
 
         assertThatThrownBy(() -> gameService.endGame("123456", HOST_ID))
                 .isInstanceOf(IllegalStateException.class);
@@ -238,41 +284,101 @@ public class GameServiceTest {
 
     // Finalize Unanswered
     @Test
-    void finalizeUnanswered_inProgressAsHost_shouldFinalizeWithoutAdvancing() {
+    void finalizeUnanswered_inProgressAsHost_shouldApplyScoresAndSendResultsWithoutAdvancing() {
         GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
-        Question question = Question.builder().id(10L).quiz(quiz).answers(List.of()).build();
-        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(inProgressSession));
-        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question));
+        List<AnswerResultDTO> results = List.of(AnswerResultDTO.builder().playerId(5L).build());
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(inProgressSession));
+        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question(10L)));
+        when(playerService.applyRoundScores(eq(inProgressSession), any(Question.class))).thenReturn(results);
 
         gameService.finalizeUnanswered("123456", HOST_ID);
 
-        verify(gameMessageService).finalizeUnansweredPlayers("123456", inProgressSession);
         assertThat(inProgressSession.isQuestionFinalized()).isTrue();
         assertThat(inProgressSession.getCurrentQuestionIndex()).isZero();
         verify(gameSessionRepository).save(inProgressSession);
+        verify(gameMessageService).sendAnswerResults(results);
+        verify(gameMessageService).broadcastLeaderboard("123456", inProgressSession);
+        verify(gameMessageService).broadcastRoundResults(eq("123456"), anyList());
+    }
+
+    @Test
+    void finalizeUnanswered_alreadyFinalized_shouldOnlyResendRoundResults() {
+        GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
+        inProgressSession.setQuestionFinalized(true);
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(inProgressSession));
+        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question(10L)));
+
+        gameService.finalizeUnanswered("123456", HOST_ID);
+
+        verify(playerService, never()).applyRoundScores(any(), any());
+        verify(gameMessageService, never()).sendAnswerResults(anyList());
         verify(gameMessageService).broadcastRoundResults(eq("123456"), anyList());
     }
 
     @Test
     void finalizeUnanswered_notHost_shouldThrowSecurityException() {
         GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
-        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(inProgressSession));
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(inProgressSession));
 
         assertThatThrownBy(() -> gameService.finalizeUnanswered("123456", 999L))
                 .isInstanceOf(SecurityException.class);
 
-        verify(gameMessageService, never()).finalizeUnansweredPlayers(anyString(), any(GameSession.class));
+        verify(playerService, never()).applyRoundScores(any(), any());
     }
 
     @Test
     void finalizeUnanswered_notInProgress_shouldThrow() {
         GameSession waitingSession = session(GameSessionStatus.WAITING, 0);
-        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(waitingSession));
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(waitingSession));
 
         assertThatThrownBy(() -> gameService.finalizeUnanswered("123456", HOST_ID))
                 .isInstanceOf(IllegalStateException.class);
 
-        verify(gameMessageService, never()).finalizeUnansweredPlayers(anyString(), any(GameSession.class));
+        verify(playerService, never()).applyRoundScores(any(), any());
+    }
+
+    // Auto Finalize (server, when time is up)
+    @Test
+    void autoFinalizeIfExpired_deadlinePassed_shouldFinalizeWithRoundResults() {
+        GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
+        // 3 s ready + 20 s limit + 1 s tolerance = 24 s
+        inProgressSession.setQuestionStartedAt(LocalDateTime.now().minusSeconds(25));
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(inProgressSession));
+        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question(10L)));
+        when(playerService.applyRoundScores(eq(inProgressSession), any(Question.class))).thenReturn(List.of());
+
+        gameService.autoFinalizeIfExpired("123456");
+
+        assertThat(inProgressSession.isQuestionFinalized()).isTrue();
+        verify(gameMessageService).sendAnswerResults(anyList());
+        verify(gameMessageService).broadcastRoundResults(eq("123456"), anyList());
+    }
+
+    @Test
+    void autoFinalizeIfExpired_timeNotUp_shouldDoNothing() {
+        GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
+        inProgressSession.setQuestionStartedAt(LocalDateTime.now().minusSeconds(10));
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(inProgressSession));
+        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question(10L)));
+
+        gameService.autoFinalizeIfExpired("123456");
+
+        assertThat(inProgressSession.isQuestionFinalized()).isFalse();
+        verify(playerService, never()).applyRoundScores(any(), any());
+        verifyNoInteractions(gameMessageService);
+    }
+
+    @Test
+    void autoFinalizeIfExpired_hostAlreadyFinalized_shouldDoNothing() {
+        GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
+        inProgressSession.setQuestionStartedAt(LocalDateTime.now().minusSeconds(25));
+        inProgressSession.setQuestionFinalized(true);
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(inProgressSession));
+
+        gameService.autoFinalizeIfExpired("123456");
+
+        verify(playerService, never()).applyRoundScores(any(), any());
+        verifyNoInteractions(gameMessageService);
     }
 
     // Get Session By Pin

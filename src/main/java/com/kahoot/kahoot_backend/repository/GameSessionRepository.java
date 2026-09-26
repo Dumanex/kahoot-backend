@@ -5,7 +5,9 @@ import com.kahoot.kahoot_backend.enums.GameSessionVisibility;
 import com.kahoot.kahoot_backend.model.GameSession;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -18,6 +20,14 @@ import java.util.Optional;
 @Repository
 public interface GameSessionRepository extends JpaRepository<GameSession, Long> {
     Optional<GameSession> findByPinCode(String pinCode);
+
+    // Row lock until the transaction ends: answers and finalize of the same game run one after another,
+    // so an answer can't slip in while finalize applies the points (and finalize can't run twice at once)
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT gs FROM GameSession gs WHERE gs.pinCode = :pinCode")
+    Optional<GameSession> findByPinCodeForUpdate(@Param("pinCode") String pinCode);
+
+    List<GameSession> findByStatusAndQuestionFinalizedFalse(GameSessionStatus status);
 
     boolean existsByPinCode(String pinCode);
 

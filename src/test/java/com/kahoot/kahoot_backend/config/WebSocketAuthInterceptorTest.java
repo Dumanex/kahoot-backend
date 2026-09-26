@@ -3,6 +3,7 @@ package com.kahoot.kahoot_backend.config;
 import com.kahoot.kahoot_backend.model.User;
 import com.kahoot.kahoot_backend.repository.UserRepository;
 import com.kahoot.kahoot_backend.service.JwtService;
+import com.kahoot.kahoot_backend.service.PlayerService;
 import io.jsonwebtoken.JwtException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,6 +36,9 @@ public class WebSocketAuthInterceptorTest {
     private UserRepository userRepository;
 
     @Mock
+    private PlayerService playerService;
+
+    @Mock
     private MessageChannel channel;
 
     @InjectMocks
@@ -61,7 +65,7 @@ public class WebSocketAuthInterceptorTest {
         Message<?> result = interceptor.preSend(stompMessage(StompCommand.CONNECT, null), channel);
 
         assertThat(userOf(result)).isNull();
-        verifyNoInteractions(jwtService, userRepository);
+        verifyNoInteractions(jwtService, userRepository, playerService);
     }
 
     @Test
@@ -103,6 +107,43 @@ public class WebSocketAuthInterceptorTest {
 
         assertThatThrownBy(() -> interceptor.preSend(stompMessage(StompCommand.CONNECT, "Bearer valid-token"), channel))
                 .isInstanceOf(MessagingException.class);
+    }
+
+    // Player (private /user/queue/... channel)
+    private Message<byte[]> playerConnect(String playerId, String rejoinToken) {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
+        accessor.addNativeHeader("playerId", playerId);
+        accessor.addNativeHeader("rejoinToken", rejoinToken);
+        accessor.setLeaveMutable(true);
+
+        return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+    }
+
+    @Test
+    void preSend_connectWithValidPlayerHeaders_shouldSetPlayerPrincipal() {
+        when(playerService.isValidPlayer(5L, "token-1")).thenReturn(true);
+
+        Message<?> result = interceptor.preSend(playerConnect("5", "token-1"), channel);
+
+        assertThat(userOf(result)).isEqualTo(new PlayerPrincipal(5L));
+        assertThat(userOf(result).getName()).isEqualTo("player:5");
+    }
+
+    @Test
+    void preSend_connectWithWrongPlayerToken_shouldStayAnonymousWithoutError() {
+        when(playerService.isValidPlayer(5L, "wrong")).thenReturn(false);
+
+        Message<?> result = interceptor.preSend(playerConnect("5", "wrong"), channel);
+
+        assertThat(userOf(result)).isNull();
+    }
+
+    @Test
+    void preSend_connectWithNonNumericPlayerId_shouldStayAnonymousWithoutError() {
+        Message<?> result = interceptor.preSend(playerConnect("abc", "token-1"), channel);
+
+        assertThat(userOf(result)).isNull();
+        verifyNoInteractions(playerService);
     }
 
     @Test

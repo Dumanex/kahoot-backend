@@ -97,6 +97,21 @@ public class AuthControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
+    // ':' is reserved for player WebSocket names ("player:5")
+    @Test
+    void register_usernameWithColon_shouldReturn400() throws Exception {
+        RegisterRequest request = RegisterRequest.builder()
+                .username("player:5")
+                .email("player1@test.com")
+                .password("password123")
+                .build();
+
+        mockMvc.perform(post("/api/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
     @Test
     void login_validCredentials_shouldReturn200WithToken() throws Exception {
         LoginRequest request = LoginRequest.builder()

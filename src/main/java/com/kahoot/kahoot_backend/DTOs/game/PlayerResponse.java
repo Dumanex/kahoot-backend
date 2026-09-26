@@ -26,6 +26,9 @@ public class PlayerResponse {
 
     private Boolean answeredCurrentQuestion;
 
-    // Only in the rejoin response, when answeredCurrentQuestion is true; same shape as /answer-result
+    // Only in the rejoin response, when answeredCurrentQuestion is true
+    private Long chosenAnswerId;
+
+    // Only in the rejoin response, after the current question is finalized; same shape as /user/queue/answer-result
     private AnswerResultDTO currentAnswerResult;
 }

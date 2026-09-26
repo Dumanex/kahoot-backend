@@ -1,5 +1,7 @@
 package com.kahoot.kahoot_backend.controller;
 
+import com.kahoot.kahoot_backend.DTOs.game.AnswerSubmitRequest;
+import com.kahoot.kahoot_backend.config.PlayerPrincipal;
 import com.kahoot.kahoot_backend.config.UserPrincipal;
 import com.kahoot.kahoot_backend.exception.ResourceNotFoundException;
 import com.kahoot.kahoot_backend.model.User;
@@ -15,6 +17,7 @@ import org.springframework.security.core.Authentication;
 
 import java.security.Principal;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
@@ -93,25 +96,38 @@ public class GameWebSocketControllerTest {
 
         controller.startGame(PIN, hostAuth(2L));
 
-        verify(gameMessageService, never()).sendError(anyString(), anyString());
+        verify(gameMessageService, never()).sendErrorToUser(any(), anyString());
     }
 
-    // Errors visible to the host
+    // Errors visible only to the host
     @Test
-    void startGame_illegalState_shouldSendErrorToGameTopic() {
+    void startGame_illegalState_shouldSendErrorOnlyToHost() {
+        Authentication host = hostAuth(1L);
         when(gameService.startGame(PIN, 1L)).thenThrow(new IllegalStateException("Game can only be started from WAITING status"));
 
-        controller.startGame(PIN, hostAuth(1L));
+        controller.startGame(PIN, host);
 
-        verify(gameMessageService).sendError(PIN, "Game can only be started from WAITING status");
+        verify(gameMessageService).sendErrorToUser(host, "Game can only be started from WAITING status");
     }
 
     @Test
-    void nextQuestion_sessionNotFound_shouldSendErrorToGameTopic() {
+    void nextQuestion_sessionNotFound_shouldSendErrorOnlyToHost() {
+        Authentication host = hostAuth(1L);
         when(gameService.nextQuestion(PIN, 1L)).thenThrow(new ResourceNotFoundException("Game session not found with PIN: " + PIN));
 
-        controller.nextQuestion(PIN, hostAuth(1L));
+        controller.nextQuestion(PIN, host);
 
-        verify(gameMessageService).sendError(PIN, "Game session not found with PIN: " + PIN);
+        verify(gameMessageService).sendErrorToUser(host, "Game session not found with PIN: " + PIN);
+    }
+
+    // Player answer
+    @Test
+    void submitAnswer_shouldPassPrincipalForPrivateErrors() {
+        AnswerSubmitRequest request = AnswerSubmitRequest.builder().playerId(5L).rejoinToken("token-1").questionId(10L).answerId(1L).build();
+        PlayerPrincipal player = new PlayerPrincipal(5L);
+
+        controller.submitAnswer(PIN, request, player);
+
+        verify(gameMessageService).handlePlayerAnswer(PIN, request, player);
     }
 }

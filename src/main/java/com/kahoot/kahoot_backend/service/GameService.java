@@ -41,6 +41,7 @@ public class GameService {
     private final PlayerRepository playerRepository;
     private final PlayerAnswerRepository playerAnswerRepository;
     private final GameMessageService gameMessageService;
+    private final PlayerService playerService;
 
     private static final int MAX_PIN_RETRIES = 10;
     private final Random random = new Random();
@@ -99,12 +100,13 @@ public class GameService {
 
     @Transactional
     public GameSessionResponse nextQuestion(String pinCode, Long userId) {
-        GameSession session = getSessionOrThrow(pinCode);
+        GameSession session = getSessionForUpdate(pinCode);
 
         validateHost(session, userId);
         validateStatus(session, GameSessionStatus.IN_PROGRESS, "Game must be IN_PROGRESS to advance question");
 
-        gameMessageService.finalizeUnansweredPlayers(pinCode, session);
+        // Safety net if the host skipped finalize; no round-results here, the next question follows right away
+        finalizeCurrentQuestion(pinCode, session, false);
 
         int totalQuestion = questionRepository.countByQuizId(session.getQuiz().getId());
         int nextIndex = session.getCurrentQuestionIndex() + 1;
@@ -125,10 +127,13 @@ public class GameService {
 
     @Transactional
     public GameSessionResponse endGame(String pinCode, Long userId) {
-        GameSession session = getSessionOrThrow(pinCode);
+        GameSession session = getSessionForUpdate(pinCode);
 
         validateHost(session, userId);
         validateStatus(session, GameSessionStatus.IN_PROGRESS, "Game can only be ended from IN_PROGRESS status");
+
+        // Ending in the middle of a question still counts the answers already given
+        finalizeCurrentQuestion(pinCode, session, false);
 
         session.setStatus(GameSessionStatus.COMPLETED);
         session.setEndedAt(LocalDateTime.now());
@@ -140,26 +145,33 @@ public class GameService {
         return mapToSessionResponse(session, totalQuestion);
     }
 
+    // Host ends the question early (e.g. everyone answered); otherwise the server does it at the deadline
     @Transactional
     public void finalizeUnanswered(String pinCode, Long userId) {
-        GameSession session = getSessionOrThrow(pinCode);
+        GameSession session = getSessionForUpdate(pinCode);
 
         validateHost(session, userId);
         validateStatus(session, GameSessionStatus.IN_PROGRESS, "Game must be IN_PROGRESS to finalize unanswered players");
 
-        gameMessageService.finalizeUnansweredPlayers(pinCode, session);
+        finalizeCurrentQuestion(pinCode, session, true);
+    }
 
-        // Lets a host that refreshes on the round-results screen restore it via /state
-        session.setQuestionFinalized(true);
-        gameSessionRepository.save(session);
+    // Called every second by GameAutoFinalizeService, so players get their results even if the host's tab is gone
+    @Transactional
+    public void autoFinalizeIfExpired(String pinCode) {
+        GameSession session = getSessionForUpdate(pinCode);
 
-        // Complete list for hosts that missed individual answer-results (e.g. after a refresh)
-        List<Question> questions = questionRepository.findByQuizIdOrderByOrderIndex(session.getQuiz().getId());
-        int index = session.getCurrentQuestionIndex();
-        if (index >= 0 && index < questions.size()) {
-            List<Player> players = playerRepository.findByGameSessionId(session.getId());
-            gameMessageService.broadcastRoundResults(pinCode, buildRoundResults(session, questions.get(index), players));
+        // Checked again under the lock: the host may have finalized, moved on or ended the game meanwhile
+        if (session.getStatus() != GameSessionStatus.IN_PROGRESS || session.isQuestionFinalized() || session.getQuestionStartedAt() == null) {
+            return;
         }
+
+        Question question = getCurrentQuestion(session);
+        if (question == null || !LocalDateTime.now().isAfter(QuestionTiming.answerDeadline(session, question))) {
+            return;
+        }
+
+        finalizeCurrentQuestion(pinCode, session, true);
     }
 
     // All sessions of the logged-in host (waiting, in progress and history), newest first
@@ -307,6 +319,42 @@ public class GameService {
                 .build();
     }
 
+    // Points of the current question are applied only once (questionFinalized); a repeated finalize
+    // only sends round-results again. The session must be locked (getSessionForUpdate) by the caller.
+    private void finalizeCurrentQuestion(String pinCode, GameSession session, boolean sendRoundResults) {
+        Question question = getCurrentQuestion(session);
+        if (question == null) {
+            return;
+        }
+
+        if (!session.isQuestionFinalized()) {
+            List<AnswerResultDTO> results = playerService.applyRoundScores(session, question);
+
+            // Also lets a client that refreshes on the round-results screen restore it via /state
+            session.setQuestionFinalized(true);
+            gameSessionRepository.save(session);
+
+            gameMessageService.sendAnswerResults(results);
+            gameMessageService.broadcastLeaderboard(pinCode, session);
+        }
+
+        if (sendRoundResults) {
+            List<Player> players = playerRepository.findByGameSessionId(session.getId());
+            gameMessageService.broadcastRoundResults(pinCode, buildRoundResults(session, question, players));
+        }
+    }
+
+    private Question getCurrentQuestion(GameSession session) {
+        List<Question> questions = questionRepository.findByQuizIdOrderByOrderIndex(session.getQuiz().getId());
+        int index = session.getCurrentQuestionIndex();
+
+        if (index >= 0 && index < questions.size()) {
+            return questions.get(index);
+        }
+
+        return null;
+    }
+
     private List<AnswerResultDTO> buildRoundResults(GameSession session, Question question, List<Player> players) {
         Map<Long, PlayerAnswer> answersByPlayer = playerAnswerRepository
                 .findByQuestionIdAndPlayerGameSessionId(question.getId(), session.getId())
@@ -320,6 +368,12 @@ public class GameService {
 
     private GameSession getSessionOrThrow(String pinCode) {
         return gameSessionRepository.findByPinCode(pinCode)
+                .orElseThrow(() -> new ResourceNotFoundException("Game session not found with PIN: " + pinCode));
+    }
+
+    // Same as getSessionOrThrow, but locks the row until the transaction ends (see GameSessionRepository)
+    private GameSession getSessionForUpdate(String pinCode) {
+        return gameSessionRepository.findByPinCodeForUpdate(pinCode)
                 .orElseThrow(() -> new ResourceNotFoundException("Game session not found with PIN: " + pinCode));
     }
 

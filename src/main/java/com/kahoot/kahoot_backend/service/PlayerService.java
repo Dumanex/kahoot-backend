@@ -1,6 +1,6 @@
 package com.kahoot.kahoot_backend.service;
 
-import com.kahoot.kahoot_backend.DTOs.game.AnswerDTO;
+import com.kahoot.kahoot_backend.DTOs.game.AnswerAcceptedDTO;
 import com.kahoot.kahoot_backend.DTOs.game.AnswerResultDTO;
 import com.kahoot.kahoot_backend.DTOs.game.AnswerSubmitRequest;
 import com.kahoot.kahoot_backend.DTOs.game.PlayerResponse;
@@ -17,9 +17,12 @@ import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -78,22 +81,39 @@ public class PlayerService {
             Question currentQuestion = getCurrentQuestion(session);
 
             if (currentQuestion != null) {
-                playerAnswerRepository.findByPlayerIdAndQuestionId(player.getId(), currentQuestion.getId())
-                        .ifPresent(playerAnswer -> {
-                            response.setAnsweredCurrentQuestion(true);
-                            response.setCurrentAnswerResult(GameDtoMapper.toAnswerResult(player, playerAnswer, currentQuestion));
-                        });
+                PlayerAnswer playerAnswer = playerAnswerRepository.findByPlayerIdAndQuestionId(player.getId(), currentQuestion.getId()).orElse(null);
+
+                if (playerAnswer != null) {
+                    response.setAnsweredCurrentQuestion(true);
+                    response.setChosenAnswerId(playerAnswer.getAnswer() != null ? playerAnswer.getAnswer().getId() : null);
+                }
+
+                // Correct answer and points only after finalize, the same moment /user/queue/answer-result is sent
+                if (session.isQuestionFinalized()) {
+                    response.setCurrentAnswerResult(GameDtoMapper.toAnswerResult(player, playerAnswer, currentQuestion));
+                }
             }
         }
 
         return response;
     }
 
+    // Used on STOMP CONNECT to give the connection the player's identity (private /user/queue/... messages)
+    public boolean isValidPlayer(Long playerId, String rejoinToken) {
+        return playerRepository.findById(playerId)
+                .map(player -> tokensMatch(player.getRejoinToken(), rejoinToken))
+                .orElse(false);
+    }
+
     // ======================== SUBMIT ANSWER (WebSocket) ========================
 
+    // Only stores the answer; score and streak change in applyRoundScores, so while the question is open
+    // nobody can tell from the scores (GET /state, /players) who answered correctly
     @Transactional
-    public AnswerResultDTO submitAnswer(String pinCode, Long playerId, AnswerSubmitRequest request) {
-        GameSession session = getSessionOrThrow(pinCode);
+    public AnswerAcceptedDTO submitAnswer(String pinCode, Long playerId, AnswerSubmitRequest request) {
+        // Locked so finalize (host or server) can't run between the checks below and saving the answer
+        GameSession session = gameSessionRepository.findByPinCodeForUpdate(pinCode)
+                .orElseThrow(() -> new ResourceNotFoundException("Game session not found with PIN: " + pinCode));
         validateStatus(session, GameSessionStatus.IN_PROGRESS, "Game is not IN_PROGRESS");
 
         Player player = getPlayerOrThrow(playerId);
@@ -114,6 +134,8 @@ public class PlayerService {
             throw new IllegalStateException("Question is already finalized");
         }
 
+        int responseTimeMs = measureResponseTime(session, currentQuestion);
+
         // Check if already answered
         if (playerAnswerRepository.existsByPlayerIdAndQuestionId(playerId, request.getQuestionId())) {
             throw new IllegalArgumentException("Already answered this question");
@@ -128,20 +150,13 @@ public class PlayerService {
 
         boolean isCorrect = correctAnswer.getId().equals(request.getAnswerId());
 
-        // Calculate points using ScoringService
+        // Calculate points using ScoringService (streak is still the one from before this question)
         int pointsEarned = scoringService.calculatePoints(
                 isCorrect,
-                request.getResponseTimeMs(),
+                responseTimeMs,
                 currentQuestion.getTimeLimitSeconds(),
                 player.getStreak()
         );
-
-        int newStreak = scoringService.calculateStreak(isCorrect, player.getStreak());
-
-        // Update player
-        player.setStreak(newStreak);
-        player.setScore(player.getScore() + pointsEarned);
-        playerRepository.save(player);
 
         Answer selectedAnswer = currentQuestion.getAnswers()
                 .stream()
@@ -153,7 +168,7 @@ public class PlayerService {
                 .player(player)
                 .question(currentQuestion)
                 .answer(selectedAnswer)
-                .responseTimeMs(request.getResponseTimeMs())
+                .responseTimeMs(responseTimeMs)
                 .isCorrect(isCorrect)
                 .pointsEarned(pointsEarned)
                 .answeredAt(LocalDateTime.now())
@@ -161,48 +176,38 @@ public class PlayerService {
 
         playerAnswerRepository.save(playerAnswer);
 
-        return AnswerResultDTO.builder()
-                .playerId(player.getId())
-                .nickname(player.getNickname())
-                .isCorrect(isCorrect)
+        return AnswerAcceptedDTO.builder()
+                .questionId(currentQuestion.getId())
                 .chosenAnswerId(request.getAnswerId())
-                .pointsEarned(pointsEarned)
-                .totalScore(player.getScore())
-                .streak(newStreak)
-                .correctAnswer(mapToAnswerDTO(correctAnswer))
                 .build();
     }
 
-    // ======================== FINALIZE UNANSWERED PLAYERS ========================
+    // ======================== APPLY ROUND SCORES (finalize) ========================
 
+    // Called once per question when it is finalized: adds the stored points and updates the streak
+    // of every player (0 for those who didn't answer). Returns one result per player.
     @Transactional
-    public List<AnswerResultDTO> finalizeUnansweredPlayers(GameSession session, Question currentQuestion) {
-        Answer correctAnswer = currentQuestion.getAnswers()
+    public List<AnswerResultDTO> applyRoundScores(GameSession session, Question question) {
+        Map<Long, PlayerAnswer> answersByPlayer = playerAnswerRepository
+                .findByQuestionIdAndPlayerGameSessionId(question.getId(), session.getId())
                 .stream()
-                .filter(Answer::getIsCorrect)
-                .findFirst()
-                .orElse(null);
+                .collect(Collectors.toMap(answer -> answer.getPlayer().getId(), Function.identity()));
 
         List<Player> players = playerRepository.findByGameSessionId(session.getId());
 
         return players.stream()
-                .filter(player -> !playerAnswerRepository.existsByPlayerIdAndQuestionId(player.getId(), currentQuestion.getId()))
                 .map(player -> {
-                    player.setStreak(0);
+                    PlayerAnswer playerAnswer = answersByPlayer.get(player.getId());
+                    boolean isCorrect = playerAnswer != null && Boolean.TRUE.equals(playerAnswer.getIsCorrect());
+                    int pointsEarned = playerAnswer != null && playerAnswer.getPointsEarned() != null ? playerAnswer.getPointsEarned() : 0;
+
+                    player.setScore(player.getScore() + pointsEarned);
+                    player.setStreak(scoringService.calculateStreak(isCorrect, player.getStreak()));
                     playerRepository.save(player);
 
-                    return AnswerResultDTO.builder()
-                            .playerId(player.getId())
-                            .nickname(player.getNickname())
-                            .isCorrect(false)
-                            .chosenAnswerId(null)
-                            .pointsEarned(0)
-                            .totalScore(player.getScore())
-                            .streak(0)
-                            .correctAnswer(correctAnswer != null ? mapToAnswerDTO(correctAnswer) : null)
-                            .build();
+                    return GameDtoMapper.toAnswerResult(player, playerAnswer, question);
                 })
-                .collect(Collectors.toList());
+                .toList();
     }
 
     // ======================== QUERY METHODS ========================
@@ -250,6 +255,23 @@ public class PlayerService {
         return null;
     }
 
+    // Time from when answering opened (after the 3 s ready phase) until now, measured by the server
+    private int measureResponseTime(GameSession session, Question question) {
+        LocalDateTime now = LocalDateTime.now();
+        long elapsedMs = Duration.between(QuestionTiming.answeringOpensAt(session), now).toMillis();
+
+        if (elapsedMs < -QuestionTiming.EARLY_TOLERANCE_MS) {
+            throw new IllegalStateException("Answering has not started yet");
+        }
+
+        if (now.isAfter(QuestionTiming.answerDeadline(session, question))) {
+            throw new IllegalStateException("Time is up for this question");
+        }
+
+        // Inside the tolerances the time is clamped, so it never goes below 0 or above the limit
+        return (int) Math.min(Math.max(elapsedMs, 0), QuestionTiming.timeLimitMs(question));
+    }
+
     private boolean tokensMatch(String expected, String provided) {
         if (expected == null || provided == null) {
             return false;
@@ -268,9 +290,5 @@ public class PlayerService {
                 .rejoinToken(player.getRejoinToken())
                 .answeredCurrentQuestion(answeredCurrentQuestion)
                 .build();
-    }
-
-    private AnswerDTO mapToAnswerDTO(Answer answer) {
-        return GameDtoMapper.toAnswerDTO(answer);
     }
 }

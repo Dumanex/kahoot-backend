@@ -1,5 +1,6 @@
 package com.kahoot.kahoot_backend.service;
 
+import com.kahoot.kahoot_backend.DTOs.game.AnswerAcceptedDTO;
 import com.kahoot.kahoot_backend.DTOs.game.AnswerResultDTO;
 import com.kahoot.kahoot_backend.DTOs.game.AnswerSubmitRequest;
 import com.kahoot.kahoot_backend.DTOs.game.PlayerResponse;
@@ -13,16 +14,19 @@ import com.kahoot.kahoot_backend.repository.QuestionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -90,6 +94,8 @@ public class PlayerServiceTest {
                 .pinCode("123456")
                 .status(GameSessionStatus.IN_PROGRESS)
                 .currentQuestionIndex(0)
+                // 3 s ready phase + ~3 s of answering, so the measured response time is about 3000 ms
+                .questionStartedAt(LocalDateTime.now().minusSeconds(6))
                 .build();
 
         player = Player.builder()
@@ -108,7 +114,6 @@ public class PlayerServiceTest {
                 .rejoinToken("token-1")
                 .questionId(10L)
                 .answerId(answerId)
-                .responseTimeMs(3000)
                 .build();
     }
 
@@ -168,39 +173,108 @@ public class PlayerServiceTest {
 
     // Submit Answer
     @Test
-    void submitAnswer_correctAnswer_shouldReturnCorrectResultAndUpdateScore() {
-        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(session));
+    void submitAnswer_correctAnswer_shouldStoreAnswerWithServerTimeAndNotChangeScoreYet() {
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(session));
         when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
         when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question));
         when(playerAnswerRepository.existsByPlayerIdAndQuestionId(5L, 10L)).thenReturn(false);
-        when(scoringService.calculatePoints(eq(true), eq(3000), eq(20), eq(2))).thenReturn(1200);
-        when(scoringService.calculateStreak(true, 2)).thenReturn(3);
+        when(scoringService.calculatePoints(eq(true), anyInt(), eq(20), eq(2))).thenReturn(1200);
 
-        AnswerResultDTO result = playerService.submitAnswer("123456", 5L, submitRequest(1L));
+        AnswerAcceptedDTO accepted = playerService.submitAnswer("123456", 5L, submitRequest(1L));
 
-        assertThat(result.getIsCorrect()).isTrue();
-        assertThat(result.getChosenAnswerId()).isEqualTo(1L);
-        assertThat(result.getPointsEarned()).isEqualTo(1200);
-        assertThat(result.getTotalScore()).isEqualTo(1200);
-        assertThat(result.getStreak()).isEqualTo(3);
-        verify(playerAnswerRepository).save(any(PlayerAnswer.class));
+        assertThat(accepted.getQuestionId()).isEqualTo(10L);
+        assertThat(accepted.getChosenAnswerId()).isEqualTo(1L);
+
+        ArgumentCaptor<PlayerAnswer> saved = ArgumentCaptor.forClass(PlayerAnswer.class);
+        verify(playerAnswerRepository).save(saved.capture());
+        assertThat(saved.getValue().getIsCorrect()).isTrue();
+        assertThat(saved.getValue().getPointsEarned()).isEqualTo(1200);
+        assertThat(saved.getValue().getResponseTimeMs()).isBetween(3000, 4000);
+
+        // Score and streak change only at finalize (applyRoundScores)
+        assertThat(player.getScore()).isZero();
+        assertThat(player.getStreak()).isEqualTo(2);
+        verify(playerRepository, never()).save(any(Player.class));
     }
 
     @Test
-    void submitAnswer_incorrectAnswer_shouldReturnZeroPointsAndResetStreak() {
-        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(session));
+    void submitAnswer_incorrectAnswer_shouldStoreZeroPoints() {
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(session));
         when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
         when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question));
         when(playerAnswerRepository.existsByPlayerIdAndQuestionId(5L, 10L)).thenReturn(false);
-        when(scoringService.calculatePoints(eq(false), eq(3000), eq(20), eq(2))).thenReturn(0);
-        when(scoringService.calculateStreak(false, 2)).thenReturn(0);
+        when(scoringService.calculatePoints(eq(false), anyInt(), eq(20), eq(2))).thenReturn(0);
 
-        AnswerResultDTO result = playerService.submitAnswer("123456", 5L, submitRequest(2L));
+        AnswerAcceptedDTO accepted = playerService.submitAnswer("123456", 5L, submitRequest(2L));
 
-        assertThat(result.getIsCorrect()).isFalse();
-        assertThat(result.getChosenAnswerId()).isEqualTo(2L);
-        assertThat(result.getPointsEarned()).isZero();
-        assertThat(result.getStreak()).isZero();
+        assertThat(accepted.getChosenAnswerId()).isEqualTo(2L);
+
+        ArgumentCaptor<PlayerAnswer> saved = ArgumentCaptor.forClass(PlayerAnswer.class);
+        verify(playerAnswerRepository).save(saved.capture());
+        assertThat(saved.getValue().getIsCorrect()).isFalse();
+        assertThat(saved.getValue().getPointsEarned()).isZero();
+    }
+
+    @Test
+    void submitAnswer_duringReadyPhase_shouldThrowNotStarted() {
+        // Question shown 1 s ago, answering opens only after 3 s
+        session.setQuestionStartedAt(LocalDateTime.now().minusSeconds(1));
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(session));
+        when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
+        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question));
+
+        assertThatThrownBy(() -> playerService.submitAnswer("123456", 5L, submitRequest(1L)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Answering has not started yet");
+        verify(playerAnswerRepository, never()).save(any(PlayerAnswer.class));
+    }
+
+    @Test
+    void submitAnswer_slightlyBeforeAnsweringOpens_shouldAcceptWithZeroTime() {
+        // 200 ms before the official start is inside the 500 ms tolerance
+        session.setQuestionStartedAt(LocalDateTime.now().minusNanos(2_800_000_000L));
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(session));
+        when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
+        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question));
+        when(playerAnswerRepository.existsByPlayerIdAndQuestionId(5L, 10L)).thenReturn(false);
+        when(scoringService.calculatePoints(eq(true), eq(0), eq(20), eq(2))).thenReturn(1500);
+
+        playerService.submitAnswer("123456", 5L, submitRequest(1L));
+
+        ArgumentCaptor<PlayerAnswer> saved = ArgumentCaptor.forClass(PlayerAnswer.class);
+        verify(playerAnswerRepository).save(saved.capture());
+        assertThat(saved.getValue().getResponseTimeMs()).isZero();
+    }
+
+    @Test
+    void submitAnswer_withinLateTolerance_shouldAcceptWithFullTime() {
+        // 3 s ready + 20 s limit + 0.5 s late: still inside the 1 s tolerance, time counted as the full limit
+        session.setQuestionStartedAt(LocalDateTime.now().minusNanos(23_500_000_000L));
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(session));
+        when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
+        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question));
+        when(playerAnswerRepository.existsByPlayerIdAndQuestionId(5L, 10L)).thenReturn(false);
+        when(scoringService.calculatePoints(eq(true), eq(20000), eq(20), eq(2))).thenReturn(1000);
+
+        playerService.submitAnswer("123456", 5L, submitRequest(1L));
+
+        ArgumentCaptor<PlayerAnswer> saved = ArgumentCaptor.forClass(PlayerAnswer.class);
+        verify(playerAnswerRepository).save(saved.capture());
+        assertThat(saved.getValue().getResponseTimeMs()).isEqualTo(20000);
+    }
+
+    @Test
+    void submitAnswer_afterDeadline_shouldThrowTimeIsUp() {
+        // 3 s ready + 20 s limit + 1 s tolerance = 24 s
+        session.setQuestionStartedAt(LocalDateTime.now().minusSeconds(25));
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(session));
+        when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
+        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question));
+
+        assertThatThrownBy(() -> playerService.submitAnswer("123456", 5L, submitRequest(1L)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Time is up for this question");
+        verify(playerAnswerRepository, never()).save(any(PlayerAnswer.class));
     }
 
     @Test
@@ -213,7 +287,7 @@ public class PlayerServiceTest {
                 .currentQuestionIndex(0)
                 .build();
 
-        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(waitingSession));
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(waitingSession));
 
         assertThatThrownBy(() -> playerService.submitAnswer("123456", 5L, submitRequest(1L)))
                 .isInstanceOf(IllegalStateException.class);
@@ -237,7 +311,7 @@ public class PlayerServiceTest {
                 .streak(0)
                 .build();
 
-        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(session));
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(session));
         when(playerRepository.findById(5L)).thenReturn(Optional.of(otherPlayer));
 
         assertThatThrownBy(() -> playerService.submitAnswer("123456", 5L, submitRequest(1L)))
@@ -246,7 +320,7 @@ public class PlayerServiceTest {
 
     @Test
     void submitAnswer_mismatchedQuestionId_shouldThrow() {
-        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(session));
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(session));
         when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
         when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question));
 
@@ -255,7 +329,6 @@ public class PlayerServiceTest {
                 .rejoinToken("token-1")
                 .questionId(999L)
                 .answerId(1L)
-                .responseTimeMs(3000)
                 .build();
 
         assertThatThrownBy(() -> playerService.submitAnswer("123456", 5L, req))
@@ -264,7 +337,7 @@ public class PlayerServiceTest {
 
     @Test
     void submitAnswer_alreadyAnswered_shouldThrow() {
-        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(session));
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(session));
         when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
         when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question));
         when(playerAnswerRepository.existsByPlayerIdAndQuestionId(5L, 10L)).thenReturn(true);
@@ -275,7 +348,7 @@ public class PlayerServiceTest {
 
     @Test
     void submitAnswer_wrongRejoinToken_shouldThrowSecurityExceptionAndNotSave() {
-        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(session));
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(session));
         when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
 
         AnswerSubmitRequest req = submitRequest(1L);
@@ -290,7 +363,7 @@ public class PlayerServiceTest {
     @Test
     void submitAnswer_questionAlreadyFinalized_shouldThrowIllegalState() {
         session.setQuestionFinalized(true);
-        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(session));
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(session));
         when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
         when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question));
 
@@ -309,7 +382,7 @@ public class PlayerServiceTest {
                 .answers(List.of(wrongAnswer))
                 .build();
 
-        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(session));
+        when(gameSessionRepository.findByPinCodeForUpdate("123456")).thenReturn(Optional.of(session));
         when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
         when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(brokenQuestion));
         when(playerAnswerRepository.existsByPlayerIdAndQuestionId(5L, 10L)).thenReturn(false);
@@ -318,14 +391,40 @@ public class PlayerServiceTest {
                 .isInstanceOf(IllegalStateException.class);
     }
 
-    // Finalize Unanswered Players
+    // Apply Round Scores
     @Test
-    void finalizeUnansweredPlayers_playerDidNotAnswer_shouldResetStreakAndReturnResult() {
+    void applyRoundScores_correctAnswer_shouldAddPointsAndIncreaseStreak() {
+        PlayerAnswer playerAnswer = PlayerAnswer.builder()
+                .player(player)
+                .question(question)
+                .answer(correctAnswer)
+                .isCorrect(true)
+                .pointsEarned(1200)
+                .build();
+        when(playerAnswerRepository.findByQuestionIdAndPlayerGameSessionId(10L, 20L)).thenReturn(List.of(playerAnswer));
         when(playerRepository.findByGameSessionId(20L)).thenReturn(List.of(player));
-        when(playerAnswerRepository.existsByPlayerIdAndQuestionId(5L, 10L)).thenReturn(false);
-        when(playerRepository.save(any(Player.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(scoringService.calculateStreak(true, 2)).thenReturn(3);
 
-        List<AnswerResultDTO> results = playerService.finalizeUnansweredPlayers(session, question);
+        List<AnswerResultDTO> results = playerService.applyRoundScores(session, question);
+
+        assertThat(results).hasSize(1);
+        AnswerResultDTO result = results.get(0);
+        assertThat(result.getIsCorrect()).isTrue();
+        assertThat(result.getChosenAnswerId()).isEqualTo(1L);
+        assertThat(result.getPointsEarned()).isEqualTo(1200);
+        assertThat(result.getTotalScore()).isEqualTo(1200);
+        assertThat(result.getStreak()).isEqualTo(3);
+        assertThat(player.getScore()).isEqualTo(1200);
+        verify(playerRepository).save(player);
+    }
+
+    @Test
+    void applyRoundScores_playerDidNotAnswer_shouldResetStreakAndReturnResult() {
+        when(playerAnswerRepository.findByQuestionIdAndPlayerGameSessionId(10L, 20L)).thenReturn(List.of());
+        when(playerRepository.findByGameSessionId(20L)).thenReturn(List.of(player));
+        when(scoringService.calculateStreak(false, 2)).thenReturn(0);
+
+        List<AnswerResultDTO> results = playerService.applyRoundScores(session, question);
 
         assertThat(results).hasSize(1);
         AnswerResultDTO result = results.get(0);
@@ -335,24 +434,31 @@ public class PlayerServiceTest {
         assertThat(result.getPointsEarned()).isZero();
         assertThat(result.getStreak()).isZero();
         assertThat(result.getCorrectAnswer().getId()).isEqualTo(1L);
+        assertThat(player.getScore()).isZero();
         assertThat(player.getStreak()).isZero();
         verify(playerRepository).save(player);
     }
 
+    // Is Valid Player (STOMP CONNECT)
     @Test
-    void finalizeUnansweredPlayers_playerAlreadyAnswered_shouldBeExcluded() {
-        when(playerRepository.findByGameSessionId(20L)).thenReturn(List.of(player));
-        when(playerAnswerRepository.existsByPlayerIdAndQuestionId(5L, 10L)).thenReturn(true);
+    void isValidPlayer_matchingToken_shouldReturnTrue() {
+        when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
 
-        List<AnswerResultDTO> results = playerService.finalizeUnansweredPlayers(session, question);
+        assertThat(playerService.isValidPlayer(5L, "token-1")).isTrue();
+    }
 
-        assertThat(results).isEmpty();
-        verify(playerRepository, never()).save(any(Player.class));
+    @Test
+    void isValidPlayer_wrongTokenOrUnknownPlayer_shouldReturnFalse() {
+        when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
+        when(playerRepository.findById(77L)).thenReturn(Optional.empty());
+
+        assertThat(playerService.isValidPlayer(5L, "wrong")).isFalse();
+        assertThat(playerService.isValidPlayer(77L, "token-1")).isFalse();
     }
 
     // Rejoin Game
     @Test
-    void rejoinGame_inProgressAndAlreadyAnswered_shouldReturnSamePlayerWithOwnResult() {
+    void rejoinGame_answeredButNotFinalized_shouldReturnOnlyChosenAnswer() {
         PlayerAnswer playerAnswer = PlayerAnswer.builder()
                 .player(player)
                 .question(question)
@@ -371,8 +477,48 @@ public class PlayerServiceTest {
         assertThat(response.getNickname()).isEqualTo("p1");
         assertThat(response.getRejoinToken()).isEqualTo("token-1");
         assertThat(response.getAnsweredCurrentQuestion()).isTrue();
+        assertThat(response.getChosenAnswerId()).isEqualTo(2L);
+        // Correct answer is not revealed while the question is open
+        assertThat(response.getCurrentAnswerResult()).isNull();
+    }
+
+    @Test
+    void rejoinGame_answeredAndFinalized_shouldReturnOwnResult() {
+        session.setQuestionFinalized(true);
+        PlayerAnswer playerAnswer = PlayerAnswer.builder()
+                .player(player)
+                .question(question)
+                .answer(wrongAnswer)
+                .isCorrect(false)
+                .pointsEarned(0)
+                .build();
+        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(session));
+        when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
+        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question));
+        when(playerAnswerRepository.findByPlayerIdAndQuestionId(5L, 10L)).thenReturn(Optional.of(playerAnswer));
+
+        PlayerResponse response = playerService.rejoinGame("123456", 5L, "token-1");
+
+        assertThat(response.getChosenAnswerId()).isEqualTo(2L);
         assertThat(response.getCurrentAnswerResult().getChosenAnswerId()).isEqualTo(2L);
         assertThat(response.getCurrentAnswerResult().getIsCorrect()).isFalse();
+        assertThat(response.getCurrentAnswerResult().getCorrectAnswer().getId()).isEqualTo(1L);
+    }
+
+    @Test
+    void rejoinGame_notAnsweredAndFinalized_shouldReturnUnansweredResult() {
+        session.setQuestionFinalized(true);
+        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(session));
+        when(playerRepository.findById(5L)).thenReturn(Optional.of(player));
+        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question));
+        when(playerAnswerRepository.findByPlayerIdAndQuestionId(5L, 10L)).thenReturn(Optional.empty());
+
+        PlayerResponse response = playerService.rejoinGame("123456", 5L, "token-1");
+
+        assertThat(response.getAnsweredCurrentQuestion()).isFalse();
+        assertThat(response.getChosenAnswerId()).isNull();
+        assertThat(response.getCurrentAnswerResult().getChosenAnswerId()).isNull();
+        assertThat(response.getCurrentAnswerResult().getPointsEarned()).isZero();
     }
 
     @Test

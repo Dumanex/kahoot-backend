@@ -1,9 +1,11 @@
 package com.kahoot.kahoot_backend.service;
 
 import com.kahoot.kahoot_backend.DTOs.game.*;
+import com.kahoot.kahoot_backend.config.PlayerPrincipal;
 import com.kahoot.kahoot_backend.exception.ResourceNotFoundException;
 import com.kahoot.kahoot_backend.model.*;
 import com.kahoot.kahoot_backend.repository.GameSessionRepository;
+import com.kahoot.kahoot_backend.repository.PlayerAnswerRepository;
 import com.kahoot.kahoot_backend.repository.PlayerRepository;
 import com.kahoot.kahoot_backend.repository.QuestionRepository;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.security.Principal;
 import java.util.List;
 
 @Slf4j
@@ -21,27 +24,32 @@ import java.util.List;
 public class GameMessageService {
     private final GameSessionRepository gameSessionRepository;
     private final PlayerRepository playerRepository;
+    private final PlayerAnswerRepository playerAnswerRepository;
     private final QuestionRepository questionRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final PlayerService playerService;
 
     private static final String TOPIC_PREFIX = "/topic/game/";
 
+    // Private destinations; the client subscribes to /user/queue/..., Spring delivers only to that user's connections
+    private static final String ANSWER_ACCEPTED_QUEUE = "/queue/answer-accepted";
+    private static final String ANSWER_RESULT_QUEUE = "/queue/answer-result";
+    private static final String ERRORS_QUEUE = "/queue/errors";
+
     // ================== PLAYER ANSWER ==================
-    public void handlePlayerAnswer(String pinCode, AnswerSubmitRequest request) {
+    public void handlePlayerAnswer(String pinCode, AnswerSubmitRequest request, Principal principal) {
         try {
-            AnswerResultDTO result = playerService.submitAnswer(pinCode, request.getPlayerId(), request);
+            AnswerAcceptedDTO accepted = playerService.submitAnswer(pinCode, request.getPlayerId(), request);
 
-            // Broadcast answer result to player
-            send(TOPIC_PREFIX + pinCode + "/answer-result", result);
+            // Only the player learns that the answer was received; whether it's correct comes after finalize
+            sendToUser(PlayerPrincipal.nameOf(request.getPlayerId()), ANSWER_ACCEPTED_QUEUE, accepted);
 
-            // Broadcast leaderboard
-            broadcastLeaderboard(pinCode, getSessionOrThrow(pinCode));
+            broadcastAnsweredCount(pinCode, accepted.getQuestionId());
         } catch (SecurityException e) {
-            // Same policy as rejected host commands: log only, don't let a forger spam /error for everyone
+            // Same policy as rejected host commands: log only
             log.warn("Rejected answer for game {} (player {}): {}", pinCode, request.getPlayerId(), e.getMessage());
         } catch (IllegalArgumentException | IllegalStateException | ResourceNotFoundException e) {
-            sendError(pinCode, e.getMessage());
+            sendErrorToUser(principal, e.getMessage());
         }
     }
 
@@ -53,16 +61,9 @@ public class GameMessageService {
         broadcastCurrentQuestion(pinCode, session);
     }
 
-    public void finalizeUnansweredPlayers(String pinCode, GameSession session) {
-        Question currentQuestion = getCurrentQuestion(session);
-
-        if (currentQuestion == null) {
-            return;
-        }
-
-        List<AnswerResultDTO> results = playerService.finalizeUnansweredPlayers(session, currentQuestion);
-
-        results.forEach(result -> send(TOPIC_PREFIX + pinCode + "/answer-result", result));
+    // After finalize every player (also those who didn't answer) gets their own result privately
+    public void sendAnswerResults(List<AnswerResultDTO> results) {
+        results.forEach(result -> sendToUser(PlayerPrincipal.nameOf(result.getPlayerId()), ANSWER_RESULT_QUEUE, result));
     }
 
     // ================== BROADCAST METHODS ==================
@@ -79,7 +80,19 @@ public class GameMessageService {
         send(TOPIC_PREFIX + pinCode + "/players", GameDtoMapper.toPlayerInfos(players));
     }
 
-    private void broadcastLeaderboard(String pinCode, GameSession session) {
+    // Only how many answered, not who or what, so it reveals nothing about the correct answer
+    private void broadcastAnsweredCount(String pinCode, Long questionId) {
+        GameSession session = getSessionOrThrow(pinCode);
+
+        AnsweredCountDTO answeredCount = AnsweredCountDTO.builder()
+                .answeredCount(playerAnswerRepository.countByQuestionIdAndPlayerGameSessionId(questionId, session.getId()))
+                .totalPlayers(playerRepository.countByGameSessionId(session.getId()))
+                .build();
+
+        send(TOPIC_PREFIX + pinCode + "/answered", answeredCount);
+    }
+
+    public void broadcastLeaderboard(String pinCode, GameSession session) {
         List<Player> players = playerRepository.findByGameSessionId(session.getId());
 
         send(TOPIC_PREFIX + pinCode + "/leaderboard", GameDtoMapper.toLeaderboard(players));
@@ -108,27 +121,41 @@ public class GameMessageService {
 
     // ================== HELPERS ==================
 
-    public void sendError(String pinCode, String message) {
+    // Errors go only to whoever sent the command (player or host); an anonymous sender is only logged
+    public void sendErrorToUser(Principal principal, String message) {
+        if (principal == null) {
+            log.warn("WebSocket error for anonymous connection: {}", message);
+            return;
+        }
+
         ErrorDTO error = ErrorDTO.builder()
                 .message(message)
                 .build();
 
-        send(TOPIC_PREFIX + pinCode + "/error", error);
+        sendToUser(principal.getName(), ERRORS_QUEUE, error);
+    }
+
+    private void send(String destination, Object payload) {
+        afterCommit(() -> messagingTemplate.convertAndSend(destination, payload));
+    }
+
+    private void sendToUser(String user, String destination, Object payload) {
+        afterCommit(() -> messagingTemplate.convertAndSendToUser(user, destination, payload));
     }
 
     // Inside a transaction, wait for the commit so clients never see state that isn't saved yet
     // (e.g. /state called right after /question) and nothing is sent if the transaction rolls back.
     // Outside a transaction (unit tests, handlePlayerAnswer after submitAnswer committed) send right away.
-    private void send(String destination, Object payload) {
+    private void afterCommit(Runnable sendAction) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    messagingTemplate.convertAndSend(destination, payload);
+                    sendAction.run();
                 }
             });
         } else {
-            messagingTemplate.convertAndSend(destination, payload);
+            sendAction.run();
         }
     }
 

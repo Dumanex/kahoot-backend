@@ -3,6 +3,7 @@ package com.kahoot.kahoot_backend.config;
 import com.kahoot.kahoot_backend.model.User;
 import com.kahoot.kahoot_backend.repository.UserRepository;
 import com.kahoot.kahoot_backend.service.JwtService;
+import com.kahoot.kahoot_backend.service.PlayerService;
 import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.Message;
@@ -21,6 +22,7 @@ import org.springframework.stereotype.Component;
 public class WebSocketAuthInterceptor implements ChannelInterceptor {
     private final JwtService jwtService;
     private final UserRepository userRepository;
+    private final PlayerService playerService;
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
@@ -31,10 +33,32 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
 
             if (authHeader != null) {
                 accessor.setUser(authenticate(authHeader));
+            } else {
+                PlayerPrincipal player = authenticatePlayer(accessor.getFirstNativeHeader("playerId"), accessor.getFirstNativeHeader("rejoinToken"));
+
+                if (player != null) {
+                    accessor.setUser(player);
+                }
             }
         }
 
         return message;
+    }
+
+    // Wrong or missing player headers are not an error: the connection stays anonymous (no private channel),
+    // so a player from a deleted or finished game can still connect and receive the public /topic messages
+    private PlayerPrincipal authenticatePlayer(String playerIdHeader, String rejoinToken) {
+        if (playerIdHeader == null || rejoinToken == null) {
+            return null;
+        }
+
+        try {
+            Long playerId = Long.valueOf(playerIdHeader);
+
+            return playerService.isValidPlayer(playerId, rejoinToken) ? new PlayerPrincipal(playerId) : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private Authentication authenticate(String authHeader) {
