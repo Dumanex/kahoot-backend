@@ -33,10 +33,5 @@ build/
 ### VS Code ###
 .vscode/
 
-# Project documentation (local only)
-CODE_EXPLANATIONS.md
-PROJECT_PROGRESS.md
-WEBSOCKET_API.md
-
 # Uploaded files (runtime data, not source)
 /uploads/
