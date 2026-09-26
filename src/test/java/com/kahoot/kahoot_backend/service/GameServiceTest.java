@@ -2,11 +2,13 @@ package com.kahoot.kahoot_backend.service;
 
 import com.kahoot.kahoot_backend.DTOs.game.GameCreateRequest;
 import com.kahoot.kahoot_backend.DTOs.game.GameSessionResponse;
+import com.kahoot.kahoot_backend.DTOs.game.HostGameSummaryResponse;
 import com.kahoot.kahoot_backend.DTOs.game.PublicGameSummaryResponse;
 import com.kahoot.kahoot_backend.enums.GameSessionStatus;
 import com.kahoot.kahoot_backend.enums.GameSessionVisibility;
 import com.kahoot.kahoot_backend.exception.ResourceNotFoundException;
 import com.kahoot.kahoot_backend.model.GameSession;
+import com.kahoot.kahoot_backend.model.Player;
 import com.kahoot.kahoot_backend.model.Question;
 import com.kahoot.kahoot_backend.model.Quiz;
 import com.kahoot.kahoot_backend.model.User;
@@ -337,6 +339,33 @@ public class GameServiceTest {
         assertThat(summary.getHostName()).isEqualTo("host");
         assertThat(summary.getTotalQuestions()).isEqualTo(5);
         assertThat(summary.getPlayerCount()).isEqualTo(3);
+    }
+
+    // List Host Sessions
+    @Test
+    void listHostSessions_winnerOnlyForCompletedWithPoints() {
+        GameSession completed = session(GameSessionStatus.COMPLETED, 4);
+        GameSession completedNoPoints = GameSession.builder().id(101L).quiz(quiz).pinCode("222222")
+                .status(GameSessionStatus.COMPLETED).currentQuestionIndex(4).build();
+        GameSession waiting = GameSession.builder().id(102L).quiz(quiz).pinCode("333333")
+                .status(GameSessionStatus.WAITING).currentQuestionIndex(0).build();
+
+        when(gameSessionRepository.findByQuizCreatorIdOrderByCreatedAtDesc(HOST_ID))
+                .thenReturn(List.of(completed, completedNoPoints, waiting));
+        when(playerRepository.findFirstByGameSessionIdOrderByScoreDescIdAsc(100L))
+                .thenReturn(Optional.of(Player.builder().nickname("Mika").score(3450).build()));
+        when(playerRepository.findFirstByGameSessionIdOrderByScoreDescIdAsc(101L))
+                .thenReturn(Optional.of(Player.builder().nickname("Pera").score(0).build()));
+
+        List<HostGameSummaryResponse> result = gameService.listHostSessions(HOST_ID);
+
+        assertThat(result).extracting(HostGameSummaryResponse::getPinCode).containsExactly("123456", "222222", "333333");
+        assertThat(result.get(0).getWinnerNickname()).isEqualTo("Mika");
+        assertThat(result.get(0).getWinnerScore()).isEqualTo(3450);
+        assertThat(result.get(1).getWinnerNickname()).isNull();
+        assertThat(result.get(1).getWinnerScore()).isNull();
+        assertThat(result.get(2).getWinnerNickname()).isNull();
+        verify(playerRepository, never()).findFirstByGameSessionIdOrderByScoreDescIdAsc(102L);
     }
 
     @Test

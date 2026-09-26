@@ -17,6 +17,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequiredArgsConstructor
 public class GameController {
@@ -60,6 +62,15 @@ public class GameController {
         GameSessionResponse session = gameService.endGame(pinCode, userId);
 
         return ResponseEntity.ok(session);
+    }
+
+    @GetMapping("/api/games/mine")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<HostGameSummaryResponse>> listMyGames(@AuthenticationPrincipal UserPrincipal userPrincipal) {
+        Long userId = userPrincipal.getUser().getId();
+        List<HostGameSummaryResponse> games = gameService.listHostSessions(userId);
+
+        return ResponseEntity.ok(games);
     }
 
     // ========================= PUBLIC ENDPOINTS (no JWT) =========================

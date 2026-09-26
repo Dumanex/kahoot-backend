@@ -4,6 +4,7 @@ import com.kahoot.kahoot_backend.DTOs.game.AnswerResultDTO;
 import com.kahoot.kahoot_backend.DTOs.game.GameCreateRequest;
 import com.kahoot.kahoot_backend.DTOs.game.GameSessionResponse;
 import com.kahoot.kahoot_backend.DTOs.game.GameStateResponse;
+import com.kahoot.kahoot_backend.DTOs.game.HostGameSummaryResponse;
 import com.kahoot.kahoot_backend.DTOs.game.PublicGameSummaryResponse;
 import com.kahoot.kahoot_backend.enums.GameSessionStatus;
 import com.kahoot.kahoot_backend.enums.GameSessionVisibility;
@@ -161,6 +162,15 @@ public class GameService {
         }
     }
 
+    // All sessions of the logged-in host (waiting, in progress and history), newest first
+    @Transactional
+    public List<HostGameSummaryResponse> listHostSessions(Long userId) {
+        return gameSessionRepository.findByQuizCreatorIdOrderByCreatedAtDesc(userId)
+                .stream()
+                .map(this::mapToHostSummary)
+                .toList();
+    }
+
     // ========================= PUBLIC OPERATIONS (without JWT) =========================
 
     public GameSessionResponse getSessionByPin(String pinCode) {
@@ -263,6 +273,37 @@ public class GameService {
                 .totalQuestions(totalQuestions)
                 .playerCount(playerCount)
                 .createdAt(session.getCreatedAt())
+                .build();
+    }
+
+    private HostGameSummaryResponse mapToHostSummary(GameSession session) {
+        int totalQuestions = questionRepository.countByQuizId(session.getQuiz().getId());
+        int playerCount = playerRepository.countByGameSessionId(session.getId());
+
+        String winnerNickname = null;
+        Integer winnerScore = null;
+        if (session.getStatus() == GameSessionStatus.COMPLETED) {
+            Player winner = playerRepository.findFirstByGameSessionIdOrderByScoreDescIdAsc(session.getId()).orElse(null);
+            if (winner != null && winner.getScore() != null && winner.getScore() > 0) {
+                winnerNickname = winner.getNickname();
+                winnerScore = winner.getScore();
+            }
+        }
+
+        return HostGameSummaryResponse.builder()
+                .pinCode(session.getPinCode())
+                .quizId(session.getQuiz().getId())
+                .quizTitle(session.getQuiz().getTitle())
+                .status(session.getStatus())
+                .visibility(session.getVisibility())
+                .playerCount(playerCount)
+                .currentQuestionIndex(session.getCurrentQuestionIndex())
+                .totalQuestions(totalQuestions)
+                .createdAt(session.getCreatedAt())
+                .startedAt(session.getStartedAt())
+                .endedAt(session.getEndedAt())
+                .winnerNickname(winnerNickname)
+                .winnerScore(winnerScore)
                 .build();
     }
 

@@ -103,6 +103,8 @@ public class SecurityConfig {
                 }))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
+                        // Must come before /api/games/{pinCode}, which would otherwise match "mine" and permit it
+                        .requestMatchers(HttpMethod.GET, "/api/games/mine").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/games/{pinCode}").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/games/{pinCode}/join").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/games/{pinCode}/rejoin").permitAll()

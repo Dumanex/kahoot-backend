@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -17,6 +18,8 @@ public interface GameSessionRepository extends JpaRepository<GameSession, Long> 
     Optional<GameSession> findByPinCode(String pinCode);
 
     boolean existsByPinCode(String pinCode);
+
+    List<GameSession> findByQuizCreatorIdOrderByCreatedAtDesc(Long creatorId);
 
     @Query("SELECT gs FROM GameSession gs JOIN gs.quiz q JOIN q.creator u " +
             "WHERE gs.status = :status AND gs.visibility = :visibility " +

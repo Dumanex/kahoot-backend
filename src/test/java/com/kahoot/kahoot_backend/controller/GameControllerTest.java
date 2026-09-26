@@ -141,6 +141,28 @@ public class GameControllerTest {
     }
 
     @Test
+    @WithMockUserPrincipal(id = 1L, username = "host")
+    void listMyGames_authenticated_shouldReturnHostSessions() throws Exception {
+        HostGameSummaryResponse game = HostGameSummaryResponse.builder()
+                .pinCode("123456")
+                .status(GameSessionStatus.COMPLETED)
+                .build();
+        when(gameService.listHostSessions(1L)).thenReturn(List.of(game));
+
+        mockMvc.perform(get("/api/games/mine"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].pinCode").value("123456"))
+                .andExpect(jsonPath("$[0].status").value("COMPLETED"));
+    }
+
+    // /api/games/{pinCode} is permitAll, so "mine" must not fall through to it
+    @Test
+    void listMyGames_unauthenticated_shouldReturn401() throws Exception {
+        mockMvc.perform(get("/api/games/mine"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void getGame_noAuth_shouldReturn200() throws Exception {
         when(gameService.getSessionByPin("123456")).thenReturn(session());
 

@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface PlayerRepository extends JpaRepository<Player, Long> {
@@ -13,4 +14,7 @@ public interface PlayerRepository extends JpaRepository<Player, Long> {
     int countByGameSessionId(Long gameSessionId);
 
     boolean existsByGameSessionIdAndNickname(Long sessionId, String nickname);
+
+    // Top scorer; on a tie the player who joined first
+    Optional<Player> findFirstByGameSessionIdOrderByScoreDescIdAsc(Long gameSessionId);
 }
