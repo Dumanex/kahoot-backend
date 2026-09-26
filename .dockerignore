@@ -1,0 +1,9 @@
+target/
+uploads/
+docs/
+.idea/
+.git/
+.claude/
+.env
+*.md
+*.iml
