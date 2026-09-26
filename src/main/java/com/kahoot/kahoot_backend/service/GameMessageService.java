@@ -10,6 +10,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.List;
 
@@ -31,7 +33,7 @@ public class GameMessageService {
             AnswerResultDTO result = playerService.submitAnswer(pinCode, request.getPlayerId(), request);
 
             // Broadcast answer result to player
-            messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/answer-result", result);
+            send(TOPIC_PREFIX + pinCode + "/answer-result", result);
 
             // Broadcast leaderboard
             broadcastLeaderboard(pinCode, getSessionOrThrow(pinCode));
@@ -45,7 +47,7 @@ public class GameMessageService {
 
     public void broadcastGameStarted(String pinCode, GameSession session) {
         // Broadcast started event
-        messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/started", new GameStartedDTO());
+        send(TOPIC_PREFIX + pinCode + "/started", new GameStartedDTO());
 
         // Broadcast first question
         broadcastCurrentQuestion(pinCode, session);
@@ -60,13 +62,13 @@ public class GameMessageService {
 
         List<AnswerResultDTO> results = playerService.finalizeUnansweredPlayers(session, currentQuestion);
 
-        results.forEach(result -> messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/answer-result", result));
+        results.forEach(result -> send(TOPIC_PREFIX + pinCode + "/answer-result", result));
     }
 
     // ================== BROADCAST METHODS ==================
 
     public void broadcastRoundResults(String pinCode, List<AnswerResultDTO> roundResults) {
-        messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/round-results", roundResults);
+        send(TOPIC_PREFIX + pinCode + "/round-results", roundResults);
     }
 
     // Public so the REST join endpoint can announce the new player as well
@@ -74,13 +76,13 @@ public class GameMessageService {
         GameSession session = getSessionOrThrow(pinCode);
         List<Player> players = playerRepository.findByGameSessionId(session.getId());
 
-        messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/players", GameDtoMapper.toPlayerInfos(players));
+        send(TOPIC_PREFIX + pinCode + "/players", GameDtoMapper.toPlayerInfos(players));
     }
 
     private void broadcastLeaderboard(String pinCode, GameSession session) {
         List<Player> players = playerRepository.findByGameSessionId(session.getId());
 
-        messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/leaderboard", GameDtoMapper.toLeaderboard(players));
+        send(TOPIC_PREFIX + pinCode + "/leaderboard", GameDtoMapper.toLeaderboard(players));
     }
 
     public void broadcastCurrentQuestion(String pinCode, GameSession session) {
@@ -90,7 +92,7 @@ public class GameMessageService {
             return;
         }
 
-        messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/question", GameDtoMapper.toQuestionDTO(question, session.getQuestionStartedAt()));
+        send(TOPIC_PREFIX + pinCode + "/question", GameDtoMapper.toQuestionDTO(question, session.getQuestionStartedAt()));
     }
 
     public void broadcastFinalResults(String pinCode, GameSession session) {
@@ -101,7 +103,7 @@ public class GameMessageService {
                 .leaderboard(GameDtoMapper.toLeaderboard(players))
                 .build();
 
-        messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/ended", finalResult);
+        send(TOPIC_PREFIX + pinCode + "/ended", finalResult);
     }
 
     // ================== HELPERS ==================
@@ -111,8 +113,23 @@ public class GameMessageService {
                 .message(message)
                 .build();
 
+        send(TOPIC_PREFIX + pinCode + "/error", error);
+    }
 
-        messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/error", error);
+    // Inside a transaction, wait for the commit so clients never see state that isn't saved yet
+    // (e.g. /state called right after /question) and nothing is sent if the transaction rolls back.
+    // Outside a transaction (unit tests, handlePlayerAnswer after submitAnswer committed) send right away.
+    private void send(String destination, Object payload) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    messagingTemplate.convertAndSend(destination, payload);
+                }
+            });
+        } else {
+            messagingTemplate.convertAndSend(destination, payload);
+        }
     }
 
     private GameSession getSessionOrThrow(String pinCode) {

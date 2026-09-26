@@ -17,6 +17,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.List;
 import java.util.Optional;
@@ -189,5 +191,24 @@ public class GameMessageServiceTest {
         gameMessageService.broadcastFinalResults(PIN, session(GameSessionStatus.COMPLETED, 0));
 
         verify(messagingTemplate).convertAndSend(eq("/topic/game/" + PIN + "/ended"), any(Object.class));
+    }
+
+    // Inside a transaction: nothing is sent until the commit
+    @Test
+    void broadcast_insideTransaction_shouldSendOnlyAfterCommit() {
+        when(playerRepository.findByGameSessionId(200L)).thenReturn(List.of());
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            gameMessageService.broadcastFinalResults(PIN, session(GameSessionStatus.COMPLETED, 0));
+
+            verify(messagingTemplate, never()).convertAndSend(anyString(), any(Object.class));
+
+            TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+
+            verify(messagingTemplate).convertAndSend(eq("/topic/game/" + PIN + "/ended"), any(Object.class));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 }
