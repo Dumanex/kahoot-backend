@@ -48,9 +48,6 @@ public class GameServiceTest {
     private PlayerRepository playerRepository;
 
     @Mock
-    private PlayerService playerService;
-
-    @Mock
     private GameMessageService gameMessageService;
 
     @InjectMocks
@@ -229,6 +226,40 @@ public class GameServiceTest {
 
         assertThatThrownBy(() -> gameService.endGame("123456", HOST_ID))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    // Finalize Unanswered
+    @Test
+    void finalizeUnanswered_inProgressAsHost_shouldFinalizeWithoutAdvancing() {
+        GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
+        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(inProgressSession));
+
+        gameService.finalizeUnanswered("123456", HOST_ID);
+
+        verify(gameMessageService).finalizeUnansweredPlayers("123456", inProgressSession);
+        verify(gameSessionRepository, never()).save(any(GameSession.class));
+    }
+
+    @Test
+    void finalizeUnanswered_notHost_shouldThrowSecurityException() {
+        GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
+        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(inProgressSession));
+
+        assertThatThrownBy(() -> gameService.finalizeUnanswered("123456", 999L))
+                .isInstanceOf(SecurityException.class);
+
+        verify(gameMessageService, never()).finalizeUnansweredPlayers(anyString(), any(GameSession.class));
+    }
+
+    @Test
+    void finalizeUnanswered_notInProgress_shouldThrow() {
+        GameSession waitingSession = session(GameSessionStatus.WAITING, 0);
+        when(gameSessionRepository.findByPinCode("123456")).thenReturn(Optional.of(waitingSession));
+
+        assertThatThrownBy(() -> gameService.finalizeUnanswered("123456", HOST_ID))
+                .isInstanceOf(IllegalStateException.class);
+
+        verify(gameMessageService, never()).finalizeUnansweredPlayers(anyString(), any(GameSession.class));
     }
 
     // Get Session By Pin

@@ -1,19 +1,15 @@
 package com.kahoot.kahoot_backend.service;
 
 import com.kahoot.kahoot_backend.DTOs.game.*;
-import com.kahoot.kahoot_backend.enums.GameSessionStatus;
 import com.kahoot.kahoot_backend.exception.ResourceNotFoundException;
 import com.kahoot.kahoot_backend.model.*;
 import com.kahoot.kahoot_backend.repository.GameSessionRepository;
-import com.kahoot.kahoot_backend.repository.PlayerAnswerRepository;
 import com.kahoot.kahoot_backend.repository.PlayerRepository;
 import com.kahoot.kahoot_backend.repository.QuestionRepository;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -59,76 +55,12 @@ public class GameMessageService {
         }
     }
 
-    // ================== HOST: START GAME ==================
-
-    @Transactional
-    public void handleGameStart(String pinCode) {
-        GameSession session = getSessionOrThrow(pinCode);
-
-        if (session.getStatus() != GameSessionStatus.WAITING) {
-            if (session.getStatus() == GameSessionStatus.IN_PROGRESS) {
-                sendError(pinCode, "Game already started");
-                return;
-            }
-
-            sendError(pinCode, "Game ended");
-            return;
-        }
-
-        session.setStatus(GameSessionStatus.IN_PROGRESS);
-        session.setStartedAt(LocalDateTime.now());
-        session.setCurrentQuestionIndex(0);
-        gameSessionRepository.save(session);
-
-        broadcastGameStarted(pinCode, session);
-    }
-
     public void broadcastGameStarted(String pinCode, GameSession session) {
         // Broadcast started event
         messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/started", new GameStartedDTO());
 
         // Broadcast first question
         broadcastCurrentQuestion(pinCode, session);
-    }
-
-    // ================== HOST: NEXT QUESTION ==================
-
-    @Transactional
-    public void handleNextQuestion(String pinCode) {
-        GameSession session = getSessionOrThrow(pinCode);
-
-        if (session.getStatus() != GameSessionStatus.IN_PROGRESS) {
-            sendError(pinCode, "Game is not IN PROGRESS");
-            return;
-        }
-
-        finalizeUnansweredPlayers(pinCode, session);
-
-        int totalQuestions = questionRepository.countByQuizId(session.getQuiz().getId());
-        int nextIndex = session.getCurrentQuestionIndex() + 1;
-
-        if (nextIndex >= totalQuestions) {
-            handleEndGame(pinCode);
-            return;
-        }
-
-        session.setCurrentQuestionIndex(nextIndex);
-        gameSessionRepository.save(session);
-
-        // Broadcast next question
-        broadcastCurrentQuestion(pinCode, session);
-    }
-
-    @Transactional
-    public void handleFinalizeUnanswered(String pinCode) {
-        GameSession session = getSessionOrThrow(pinCode);
-
-        if (session.getStatus() != GameSessionStatus.IN_PROGRESS) {
-            sendError(pinCode, "Game is not IN PROGRESS");
-            return;
-        }
-
-        finalizeUnansweredPlayers(pinCode, session);
     }
 
     public void finalizeUnansweredPlayers(String pinCode, GameSession session) {
@@ -141,25 +73,6 @@ public class GameMessageService {
         List<AnswerResultDTO> results = playerService.finalizeUnansweredPlayers(session, currentQuestion);
 
         results.forEach(result -> messagingTemplate.convertAndSend(TOPIC_PREFIX + pinCode + "/answer-result", result));
-    }
-
-    // ================== HOST: END GAME ==================
-
-    @Transactional
-    public void handleEndGame(String pinCode) {
-        GameSession session = getSessionOrThrow(pinCode);
-
-        if (session.getStatus() != GameSessionStatus.IN_PROGRESS) {
-            sendError(pinCode, "Game is not IN_PROGRESS");
-            return;
-        }
-
-        session.setStatus(GameSessionStatus.COMPLETED);
-        session.setEndedAt(LocalDateTime.now());
-        gameSessionRepository.save(session);
-
-        // Broadcast final results
-        broadcastFinalResults(pinCode, session);
     }
 
     // ================== BROADCAST METHODS ==================
@@ -253,7 +166,7 @@ public class GameMessageService {
 
     // ================== HELPERS ==================
 
-    private void sendError(String pinCode, String message) {
+    public void sendError(String pinCode, String message) {
         ErrorDTO error = ErrorDTO.builder()
                 .message(message)
                 .build();

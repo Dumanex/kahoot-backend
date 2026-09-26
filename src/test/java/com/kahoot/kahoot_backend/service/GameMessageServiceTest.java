@@ -150,60 +150,21 @@ public class GameMessageServiceTest {
         verify(messagingTemplate, never()).convertAndSend(eq("/topic/game/" + PIN + "/leaderboard"), any(Object.class));
     }
 
-    // Handle Game Start
+    // Broadcast Game Started
     @Test
-    void handleGameStart_fromWaiting_shouldTransitionAndBroadcastStartedAndQuestion() {
-        GameSession waitingSession = session(GameSessionStatus.WAITING, 0);
-        when(gameSessionRepository.findByPinCode(PIN)).thenReturn(Optional.of(waitingSession));
+    void broadcastGameStarted_shouldSendStartedAndFirstQuestion() {
+        GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
         when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question));
 
-        gameMessageService.handleGameStart(PIN);
+        gameMessageService.broadcastGameStarted(PIN, inProgressSession);
 
-        verify(gameSessionRepository).save(argThat(s -> s.getStatus() == GameSessionStatus.IN_PROGRESS));
         verify(messagingTemplate).convertAndSend(eq("/topic/game/" + PIN + "/started"), any(Object.class));
         verify(messagingTemplate).convertAndSend(eq("/topic/game/" + PIN + "/question"), any(Object.class));
     }
 
+    // Finalize Unanswered Players
     @Test
-    void handleGameStart_alreadyInProgress_shouldSendError() {
-        GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
-        when(gameSessionRepository.findByPinCode(PIN)).thenReturn(Optional.of(inProgressSession));
-
-        gameMessageService.handleGameStart(PIN);
-
-        verify(messagingTemplate).convertAndSend(eq("/topic/game/" + PIN + "/error"), any(Object.class));
-        verify(gameSessionRepository, never()).save(any());
-    }
-
-    @Test
-    void handleGameStart_completed_shouldSendError() {
-        GameSession completedSession = session(GameSessionStatus.COMPLETED, 4);
-        when(gameSessionRepository.findByPinCode(PIN)).thenReturn(Optional.of(completedSession));
-
-        gameMessageService.handleGameStart(PIN);
-
-        verify(messagingTemplate).convertAndSend(eq("/topic/game/" + PIN + "/error"), any(Object.class));
-        verify(gameSessionRepository, never()).save(any());
-    }
-
-    // Handle Next Question
-    @Test
-    void handleNextQuestion_notLastQuestion_shouldAdvanceAndBroadcastQuestion() {
-        GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
-        when(gameSessionRepository.findByPinCode(PIN)).thenReturn(Optional.of(inProgressSession));
-        when(questionRepository.countByQuizId(50L)).thenReturn(5);
-        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question, question));
-
-        gameMessageService.handleNextQuestion(PIN);
-
-        verify(playerService).finalizeUnansweredPlayers(inProgressSession, question);
-        verify(gameSessionRepository).save(argThat(s -> s.getCurrentQuestionIndex() == 1));
-        verify(messagingTemplate).convertAndSend(eq("/topic/game/" + PIN + "/question"), any(Object.class));
-        verify(messagingTemplate, never()).convertAndSend(eq("/topic/game/" + PIN + "/ended"), any(Object.class));
-    }
-
-    @Test
-    void handleNextQuestion_playersDidNotAnswer_shouldBroadcastResultForEachOfThem() {
+    void finalizeUnansweredPlayers_playersDidNotAnswer_shouldBroadcastResultForEachOfThem() {
         GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
         AnswerResultDTO unansweredResult = AnswerResultDTO.builder()
                 .playerId(5L)
@@ -214,97 +175,33 @@ public class GameMessageServiceTest {
                 .streak(0)
                 .build();
 
-        when(gameSessionRepository.findByPinCode(PIN)).thenReturn(Optional.of(inProgressSession));
-        when(questionRepository.countByQuizId(50L)).thenReturn(5);
-        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question, question));
-        when(playerService.finalizeUnansweredPlayers(inProgressSession, question)).thenReturn(List.of(unansweredResult));
-
-        gameMessageService.handleNextQuestion(PIN);
-
-        verify(messagingTemplate).convertAndSend(eq("/topic/game/" + PIN + "/answer-result"), eq(unansweredResult));
-    }
-
-    @Test
-    void handleNextQuestion_lastQuestion_shouldAutoCompleteAndBroadcastFinalResults() {
-        GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 4);
-        when(gameSessionRepository.findByPinCode(PIN)).thenReturn(Optional.of(inProgressSession));
-        when(questionRepository.countByQuizId(50L)).thenReturn(5);
-        when(playerRepository.findByGameSessionId(200L)).thenReturn(List.of());
-
-        gameMessageService.handleNextQuestion(PIN);
-
-        verify(gameSessionRepository).save(argThat(s -> s.getStatus() == GameSessionStatus.COMPLETED));
-        verify(messagingTemplate).convertAndSend(eq("/topic/game/" + PIN + "/ended"), any(Object.class));
-        verify(messagingTemplate, never()).convertAndSend(eq("/topic/game/" + PIN + "/question"), any(Object.class));
-    }
-
-    @Test
-    void handleNextQuestion_notInProgress_shouldSendError() {
-        GameSession waitingSession = session(GameSessionStatus.WAITING, 0);
-        when(gameSessionRepository.findByPinCode(PIN)).thenReturn(Optional.of(waitingSession));
-
-        gameMessageService.handleNextQuestion(PIN);
-
-        verify(messagingTemplate).convertAndSend(eq("/topic/game/" + PIN + "/error"), any(Object.class));
-        verify(gameSessionRepository, never()).save(any());
-    }
-
-    // Handle Finalize Unanswered
-    @Test
-    void handleFinalizeUnanswered_inProgress_shouldBroadcastResultsWithoutAdvancing() {
-        GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
-        AnswerResultDTO unansweredResult = AnswerResultDTO.builder()
-                .playerId(5L)
-                .nickname("p1")
-                .isCorrect(false)
-                .chosenAnswerId(null)
-                .pointsEarned(0)
-                .streak(0)
-                .build();
-
-        when(gameSessionRepository.findByPinCode(PIN)).thenReturn(Optional.of(inProgressSession));
         when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question));
         when(playerService.finalizeUnansweredPlayers(inProgressSession, question)).thenReturn(List.of(unansweredResult));
 
-        gameMessageService.handleFinalizeUnanswered(PIN);
+        gameMessageService.finalizeUnansweredPlayers(PIN, inProgressSession);
 
         verify(messagingTemplate).convertAndSend(eq("/topic/game/" + PIN + "/answer-result"), eq(unansweredResult));
         verify(gameSessionRepository, never()).save(any());
-        verify(messagingTemplate, never()).convertAndSend(eq("/topic/game/" + PIN + "/question"), any(Object.class));
     }
 
     @Test
-    void handleFinalizeUnanswered_notInProgress_shouldSendError() {
-        GameSession waitingSession = session(GameSessionStatus.WAITING, 0);
-        when(gameSessionRepository.findByPinCode(PIN)).thenReturn(Optional.of(waitingSession));
+    void finalizeUnansweredPlayers_noCurrentQuestion_shouldDoNothing() {
+        GameSession outOfRangeSession = session(GameSessionStatus.IN_PROGRESS, 5);
+        when(questionRepository.findByQuizIdOrderByOrderIndex(50L)).thenReturn(List.of(question));
 
-        gameMessageService.handleFinalizeUnanswered(PIN);
+        gameMessageService.finalizeUnansweredPlayers(PIN, outOfRangeSession);
 
-        verify(messagingTemplate).convertAndSend(eq("/topic/game/" + PIN + "/error"), any(Object.class));
         verify(playerService, never()).finalizeUnansweredPlayers(any(), any());
+        verify(messagingTemplate, never()).convertAndSend(anyString(), any(Object.class));
     }
 
-    // Handle End Game
+    // Broadcast Final Results
     @Test
-    void handleEndGame_fromInProgress_shouldCompleteAndBroadcastFinalResults() {
-        GameSession inProgressSession = session(GameSessionStatus.IN_PROGRESS, 0);
-        when(gameSessionRepository.findByPinCode(PIN)).thenReturn(Optional.of(inProgressSession));
+    void broadcastFinalResults_shouldSendEndedWithLeaderboard() {
         when(playerRepository.findByGameSessionId(200L)).thenReturn(List.of());
 
-        gameMessageService.handleEndGame(PIN);
+        gameMessageService.broadcastFinalResults(PIN, session(GameSessionStatus.COMPLETED, 0));
 
-        verify(gameSessionRepository).save(argThat(s -> s.getStatus() == GameSessionStatus.COMPLETED));
         verify(messagingTemplate).convertAndSend(eq("/topic/game/" + PIN + "/ended"), any(Object.class));
-    }
-
-    @Test
-    void handleEndGame_notInProgress_shouldSendError() {
-        GameSession waitingSession = session(GameSessionStatus.WAITING, 0);
-        when(gameSessionRepository.findByPinCode(PIN)).thenReturn(Optional.of(waitingSession));
-
-        gameMessageService.handleEndGame(PIN);
-
-        verify(messagingTemplate).convertAndSend(eq("/topic/game/" + PIN + "/error"), any(Object.class));
-        verify(gameSessionRepository, never()).save(any());
     }
 }

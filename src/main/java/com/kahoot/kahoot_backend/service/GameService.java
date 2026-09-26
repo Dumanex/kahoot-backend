@@ -28,10 +28,8 @@ public class GameService {
     private final QuizRepository quizRepository;
     private final QuestionRepository questionRepository;
     private final PlayerRepository playerRepository;
-    private final PlayerService playerService;
     private final GameMessageService gameMessageService;
 
-    private static final int PIN_LENGTH = 6;
     private static final int MAX_PIN_RETRIES = 10;
     private final Random random = new Random();
 
@@ -123,6 +121,16 @@ public class GameService {
 
         int totalQuestion = questionRepository.countByQuizId(session.getQuiz().getId());
         return mapToSessionResponse(session, totalQuestion);
+    }
+
+    @Transactional
+    public void finalizeUnanswered(String pinCode, Long userId) {
+        GameSession session = getSessionOrThrow(pinCode);
+
+        validateHost(session, userId);
+        validateStatus(session, GameSessionStatus.IN_PROGRESS, "Game must be IN_PROGRESS to finalize unanswered players");
+
+        gameMessageService.finalizeUnansweredPlayers(pinCode, session);
     }
 
     // ========================= PUBLIC OPERATIONS (without JWT) =========================
